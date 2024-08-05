@@ -23,6 +23,21 @@ func main() {
 		fmt.Println("Error accepting connection: ", err.Error())
 		os.Exit(1)
 	}
-	message := "+PONG\r\n"
-	connection.Write([]byte(message))
+
+	// response := "PING"
+	// var b []byte
+	defer connection.Close()
+	for {
+		b := make([]byte, 256)
+		_, err = connection.Read(b)
+
+		if err != nil {
+			os.Exit(1)
+		}
+		// fmt.Println(string(b))
+
+		message := "+PONG\r\n"
+		connection.Write([]byte(message))
+	}
+	// connection.Close()
 }
