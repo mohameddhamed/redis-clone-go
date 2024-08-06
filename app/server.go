@@ -7,37 +7,40 @@ import (
 	"os"
 )
 
+func handleConnection(connection net.Conn) {
+	for {
+		buffer := make([]byte, 256)
+		_, err := connection.Read(buffer)
+
+		if err != nil {
+			os.Exit(1)
+		}
+
+		message := "+PONG\r\n"
+		connection.Write([]byte(message))
+	}
+}
+
 func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Println("Logs from your program will appear here!")
 
 	// Uncomment this block to pass the first stage
 	//
-	l, err := net.Listen("tcp", "0.0.0.0:6379")
+	listener, err := net.Listen("tcp", "0.0.0.0:6379")
 	if err != nil {
 		fmt.Println("Failed to bind to port 6379")
 		os.Exit(1)
 	}
-	connection, err := l.Accept()
-	if err != nil {
-		fmt.Println("Error accepting connection: ", err.Error())
-		os.Exit(1)
-	}
-
-	// response := "PING"
-	// var b []byte
-	defer connection.Close()
 	for {
-		b := make([]byte, 256)
-		_, err = connection.Read(b)
+
+		connection, err := listener.Accept()
 
 		if err != nil {
+			fmt.Println("Error accepting connection: ", err.Error())
 			os.Exit(1)
 		}
-		// fmt.Println(string(b))
 
-		message := "+PONG\r\n"
-		connection.Write([]byte(message))
+		go handleConnection(connection)
 	}
-	// connection.Close()
 }
