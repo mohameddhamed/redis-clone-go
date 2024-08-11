@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	// "time"
+
 	// Uncomment this block to pass the first stage
 	"net"
 	"os"
@@ -38,6 +40,7 @@ func handleConnection(connection net.Conn) {
 	defer connection.Close()
 	for {
 		buffer := make([]byte, 256)
+		// time.Sleep(2 * time.Second)
 		n, err := connection.Read(buffer)
 
 		var arr []string
