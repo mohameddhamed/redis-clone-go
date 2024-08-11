@@ -3,10 +3,9 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"strconv"
-	"strings"
 
-	// "time"
+	// "strconv"
+	"strings"
 
 	// Uncomment this block to pass the first stage
 	"net"
@@ -40,48 +39,35 @@ func handleConnection(connection net.Conn) {
 	defer connection.Close()
 	for {
 		buffer := make([]byte, 256)
-		// time.Sleep(2 * time.Second)
 		n, err := connection.Read(buffer)
 
-		var arr []string
-		command := string(buffer[:n])
-		if len(command) > 0 && command[0] == '*' {
-			iterations, _ := strconv.Atoi(string(command[1]))
-			i := 2
-			iter := 0
-			for iter < iterations {
-				// if bulk string ahead
-				if command[i] == '$' {
-					i++
-					bulkLen, _ := strconv.Atoi(string(command[i]))
-					i += 2
-					word := command[i : i+bulkLen+1]
-					word = strings.ReplaceAll(word, "\n", "")
+		var commands []string
+		cmd := string(buffer[:n])
 
-					arr = append(arr, word)
-					iter++
-				}
-				i++
+		if len(cmd) > 0 && cmd[0] == '*' {
+			arr := strings.Split(cmd[4:], "\r\n")
+			for i := 1; i < len(arr); i += 2 {
+				commands = append(commands, strings.TrimSpace(arr[i]))
 			}
 		}
 
 		message := simpleString("PONG")
 
-		if len(arr) > 0 {
+		if len(commands) > 0 {
 
-			first := strings.ToLower(arr[0])
+			first := strings.ToLower(commands[0])
 
 			if strings.Contains(first, "echo") {
-				message = bulkString(arr[1])
+				message = bulkString(commands[1])
 
 			} else if strings.Contains(first, "set") {
 				myMap := make(map[string]string)
-				myMap[arr[1]] = arr[2]
+				myMap[commands[1]] = commands[2]
 				saveMapToFile(myMap)
 				message = simpleString("OK")
 
 			} else if strings.Contains(first, "get") {
-				key := arr[1]
+				key := commands[1]
 				myMap := retrieveMapFromFile()
 				message = bulkString(myMap[key])
 			}
