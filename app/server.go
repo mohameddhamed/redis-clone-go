@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"time"
 
 	// "strconv"
 	"strings"
@@ -11,6 +13,15 @@ import (
 	"net"
 	"os"
 )
+
+func contains(arr []string, element string) bool {
+	for _, v := range arr {
+		if strings.ToLower(v) == element {
+			return true
+		}
+	}
+	return false
+}
 
 func saveMapToFile(myMap map[string]string) {
 	file, _ := os.Create("data.json")
@@ -32,10 +43,15 @@ func simpleString(s string) string {
 	return fmt.Sprintf("+%s\r\n", s)
 }
 func bulkString(s string) string {
+	if s == "-1" {
+		return fmt.Sprintf("$%s\r\n", s)
+	}
 	return fmt.Sprintf("$%d\r\n%s\r\n", len(s), s)
 }
 
 func handleConnection(connection net.Conn) {
+	layout := "2006-01-02 15:04:05.99999 -0700 MST"
+
 	defer connection.Close()
 	for {
 		buffer := make([]byte, 256)
@@ -60,6 +76,19 @@ func handleConnection(connection net.Conn) {
 			if strings.Contains(first, "echo") {
 				message = bulkString(commands[1])
 
+			} else if strings.Contains(first, "set") && contains(commands, "px") {
+				myMap := make(map[string]string)
+
+				currentTime := time.Now()
+				expiry, _ := strconv.Atoi(commands[4])
+				duration := time.Duration(expiry) * time.Millisecond
+				deadline := currentTime.Add(duration).Format(layout)
+
+				value := commands[2] + "|" + deadline
+				myMap[commands[1]] = value
+				saveMapToFile(myMap)
+				message = simpleString("OK")
+
 			} else if strings.Contains(first, "set") {
 				myMap := make(map[string]string)
 				myMap[commands[1]] = commands[2]
@@ -69,7 +98,19 @@ func handleConnection(connection net.Conn) {
 			} else if strings.Contains(first, "get") {
 				key := commands[1]
 				myMap := retrieveMapFromFile()
-				message = bulkString(myMap[key])
+				value := myMap[key]
+				if !strings.Contains(value, "|") {
+					message = bulkString(value)
+				} else {
+					args := strings.Split(value, "|")
+					deadline, _ := time.Parse(layout, args[1])
+
+					if deadline.After(time.Now()) {
+						message = bulkString((args[0]))
+					} else {
+						message = bulkString("-1")
+					}
+				}
 			}
 		}
 
