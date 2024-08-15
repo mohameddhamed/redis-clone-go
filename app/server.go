@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	// "strconv"
@@ -13,6 +14,8 @@ import (
 	"net"
 	"os"
 )
+
+var mu sync.Mutex
 
 func contains(arr []string, element string) bool {
 	for _, v := range arr {
@@ -97,8 +100,12 @@ func handleConnection(connection net.Conn) {
 
 			} else if strings.Contains(first, "get") {
 				key := commands[1]
+
+				mu.Lock()
 				myMap := retrieveMapFromFile()
 				value := myMap[key]
+				mu.Unlock()
+
 				if !strings.Contains(value, "|") {
 					message = bulkString(value)
 				} else {
