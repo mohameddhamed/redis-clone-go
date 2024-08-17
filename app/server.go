@@ -61,7 +61,6 @@ func handleConnection(connection net.Conn) {
 		n, err := connection.Read(buffer)
 
 		if err != nil {
-			// os.Exit(0)
 			return
 		}
 
@@ -134,11 +133,19 @@ func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Println("Logs from your program will appear here!")
 
+	port := "6379"
+
+	if len(os.Args) > 1 {
+		if os.Args[1] == "--port" {
+			port = os.Args[2]
+		}
+	}
+
 	// Uncomment this block to pass the first stage
 	//
-	listener, err := net.Listen("tcp", "0.0.0.0:6379")
+	listener, err := net.Listen("tcp", "0.0.0.0:"+port)
 	if err != nil {
-		fmt.Println("Failed to bind to port 6379")
+		fmt.Println("Failed to bind to port " + port)
 		os.Exit(1)
 	}
 	defer listener.Close()
