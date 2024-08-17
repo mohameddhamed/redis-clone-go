@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"strconv"
 	"sync"
@@ -52,7 +53,7 @@ func bulkString(s string) string {
 	return fmt.Sprintf("$%d\r\n%s\r\n", len(s), s)
 }
 
-func handleConnection(connection net.Conn) {
+func handleConnection(connection net.Conn, role string) {
 	layout := "2006-01-02 15:04:05.99999 -0700 MST"
 
 	defer connection.Close()
@@ -125,7 +126,7 @@ func handleConnection(connection net.Conn) {
 			} else if strings.Contains(first, "info") {
 				key := strings.ToLower(commands[1])
 				if strings.Contains(key, "replication") {
-					message = bulkString("role:master")
+					message = bulkString("role:" + role)
 				}
 			}
 		}
@@ -137,15 +138,22 @@ func handleConnection(connection net.Conn) {
 func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Println("Logs from your program will appear here!")
+	role := "master"
 
-	port := "6379"
+	var port string
+	var replicaof string
+	// port := flag.String("port", "6379", "")
+	// replicaof := flag.String("replicaof", "", "")
+	flag.StringVar(&port, "port", "6379", "")
+	flag.StringVar(&replicaof, "replicaof", "", "")
+	flag.Parse()
 
-	if len(os.Args) > 1 {
-		if os.Args[1] == "--port" {
-			port = os.Args[2]
-		}
+	if len(replicaof) > 0 {
+		// substrings := strings.Split(*replicaof, " ")
+		// masterHost := substrings[0]
+		// masterPort := substrings[1]
+		role = "slave"
 	}
-
 	// Uncomment this block to pass the first stage
 	//
 	listener, err := net.Listen("tcp", "0.0.0.0:"+port)
@@ -163,6 +171,6 @@ func main() {
 			os.Exit(1)
 		}
 
-		go handleConnection(connection)
+		go handleConnection(connection, role)
 	}
 }
