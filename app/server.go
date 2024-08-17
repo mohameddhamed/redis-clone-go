@@ -57,8 +57,13 @@ func handleConnection(connection net.Conn) {
 
 	defer connection.Close()
 	for {
-		buffer := make([]byte, 256)
+		buffer := make([]byte, 1024)
 		n, err := connection.Read(buffer)
+
+		if err != nil {
+			// os.Exit(0)
+			return
+		}
 
 		var commands []string
 		cmd := string(buffer[:n])
@@ -119,10 +124,6 @@ func handleConnection(connection net.Conn) {
 					}
 				}
 			}
-		}
-
-		if err != nil {
-			os.Exit(0)
 		}
 
 		connection.Write([]byte(message))
