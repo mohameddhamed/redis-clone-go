@@ -122,6 +122,11 @@ func handleConnection(connection net.Conn) {
 						message = bulkString("-1")
 					}
 				}
+			} else if strings.Contains(first, "info") {
+				key := strings.ToLower(commands[1])
+				if strings.Contains(key, "replication") {
+					message = bulkString("role:master")
+				}
 			}
 		}
 
