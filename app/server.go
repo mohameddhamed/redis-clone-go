@@ -126,7 +126,12 @@ func handleConnection(connection net.Conn, role string) {
 			} else if strings.Contains(first, "info") {
 				key := strings.ToLower(commands[1])
 				if strings.Contains(key, "replication") {
-					message = bulkString("role:" + role)
+					messageBefore := "role:" + role + "\n"
+					id := "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
+					messageBefore += "master_replid:" + id + "\n"
+					offset := 0
+					messageBefore += "master_repl_offset:" + strconv.Itoa(offset)
+					message = bulkString(messageBefore)
 				}
 			}
 		}
