@@ -18,6 +18,43 @@ import (
 
 var mu sync.Mutex
 
+func connect(port string, host string, role string) {
+
+	listener, err := net.Listen("tcp", host+":"+port)
+
+	if err != nil {
+		fmt.Println("Failed to bind to port " + port)
+		os.Exit(1)
+	}
+
+	defer listener.Close()
+
+	for {
+
+		connection, err := listener.Accept()
+
+		if err != nil {
+			fmt.Println("Error accepting connection: ", err.Error())
+			os.Exit(1)
+		}
+
+		go handleConnection(connection, role)
+	}
+}
+
+func handshake(port string, host string) {
+
+	connection, err := net.Dial("tcp", host+":"+port)
+
+	if err != nil {
+		fmt.Println("Failed to bind to port " + port)
+		os.Exit(1)
+	}
+
+	message := arrayType(bulkString("PING"), 1)
+	connection.Write([]byte(message))
+}
+
 func contains(arr []string, element string) bool {
 	for _, v := range arr {
 		if strings.ToLower(v) == element {
@@ -51,6 +88,9 @@ func bulkString(s string) string {
 		return fmt.Sprintf("$%s\r\n", s)
 	}
 	return fmt.Sprintf("$%d\r\n%s\r\n", len(s), s)
+}
+func arrayType(s string, length int) string {
+	return fmt.Sprintf("*%d\r\n%s", length, s)
 }
 
 func handleConnection(connection net.Conn, role string) {
@@ -124,14 +164,19 @@ func handleConnection(connection net.Conn, role string) {
 					}
 				}
 			} else if strings.Contains(first, "info") {
+
 				key := strings.ToLower(commands[1])
+
 				if strings.Contains(key, "replication") {
+
 					messageBefore := "role:" + role + "\n"
 					id := "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
 					messageBefore += "master_replid:" + id + "\n"
 					offset := 0
 					messageBefore += "master_repl_offset:" + strconv.Itoa(offset)
+
 					message = bulkString(messageBefore)
+
 				}
 			}
 		}
@@ -143,39 +188,25 @@ func handleConnection(connection net.Conn, role string) {
 func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Println("Logs from your program will appear here!")
-	role := "master"
+	host := "0.0.0.0"
 
 	var port string
 	var replicaof string
-	// port := flag.String("port", "6379", "")
-	// replicaof := flag.String("replicaof", "", "")
+	role := "master"
+
 	flag.StringVar(&port, "port", "6379", "")
 	flag.StringVar(&replicaof, "replicaof", "", "")
 	flag.Parse()
 
 	if len(replicaof) > 0 {
-		// substrings := strings.Split(*replicaof, " ")
-		// masterHost := substrings[0]
-		// masterPort := substrings[1]
+
+		substrings := strings.Split(replicaof, " ")
+		masterHost := substrings[0]
+		masterPort := substrings[1]
+		handshake(masterPort, masterHost)
 		role = "slave"
+		// connect(port, host, "slave")
 	}
-	// Uncomment this block to pass the first stage
-	//
-	listener, err := net.Listen("tcp", "0.0.0.0:"+port)
-	if err != nil {
-		fmt.Println("Failed to bind to port " + port)
-		os.Exit(1)
-	}
-	defer listener.Close()
-	for {
-
-		connection, err := listener.Accept()
-
-		if err != nil {
-			fmt.Println("Error accepting connection: ", err.Error())
-			os.Exit(1)
-		}
-
-		go handleConnection(connection, role)
-	}
+	// } else {
+	connect(port, host, role)
 }
