@@ -80,6 +80,7 @@ func handshake(masterPort string, host string, slavePort string) {
 
 func handleConnection(connection net.Conn, role string) {
 	layout := "2006-01-02 15:04:05.99999 -0700 MST"
+	id := "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
 
 	defer connection.Close()
 	for {
@@ -149,7 +150,6 @@ func handleConnection(connection net.Conn, role string) {
 				if strings.Contains(key, "replication") {
 
 					messageBefore := "role:" + role + "\n"
-					id := "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
 					messageBefore += "master_replid:" + id + "\n"
 					offset := 0
 					messageBefore += "master_repl_offset:" + strconv.Itoa(offset)
@@ -161,6 +161,8 @@ func handleConnection(connection net.Conn, role string) {
 
 				message = simpleString("OK")
 
+			} else if strings.Contains(first, "psync") {
+				message = simpleString("FULLRESYNC " + id + " 0")
 			}
 		}
 
