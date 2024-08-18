@@ -52,20 +52,6 @@ func handshake(masterPort string, host string, slavePort string) {
 
 	message := arrayType([]string{bulkString("PING")}, 1)
 	connection.Write([]byte(message))
-	// if recieve pong
-	// list, err := net.Listen("tcp", host+":"+slavePort)
-
-	// if err != nil {
-	// 	fmt.Println("Failed to bind to port " + slavePort)
-	// 	os.Exit(1)
-	// }
-
-	// conn, err := list.Accept()
-
-	// if err != nil {
-	// 	fmt.Println("Error accepting connection: ", err.Error())
-	// 	os.Exit(1)
-	// }
 
 	response := Receive(connection)
 
@@ -78,22 +64,18 @@ func handshake(masterPort string, host string, slavePort string) {
 
 		if strings.Contains(response, "ok") {
 
-			time.Sleep(1 * time.Second)
 			message = arrayType([]string{bulkString("REPLCONF"), bulkString("capa"), bulkString("psync2")}, 3)
 			connection.Write([]byte(message))
 
+			response = Receive(connection)
+
+			if strings.Contains(response, "ok") {
+
+				message = arrayType([]string{bulkString("PSYNC"), bulkString("?"), "$2\r\n-1\r\n"}, 3)
+				connection.Write([]byte(message))
+			}
 		}
 	}
-	// if err != nil {
-	// 	fmt.Println("Error reading connection: ", err.Error())
-	// 	os.Exit(1)
-	// }
-
-	// fmt.Println("recieved", n)
-	// if n > 0 {
-	// 	message = arrayType([]string{bulkString("REPLCONF"), bulkString("listening-port"), bulkString(slavePort)}, 3)
-	// 	connection.Write([]byte(message))
-	// }
 }
 
 func handleConnection(connection net.Conn, role string) {
