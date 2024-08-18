@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"strconv"
@@ -42,55 +41,59 @@ func connect(port string, host string, role string) {
 	}
 }
 
-func handshake(port string, host string) {
+func handshake(masterPort string, host string, slavePort string) {
 
-	connection, err := net.Dial("tcp", host+":"+port)
+	connection, err := net.Dial("tcp", host+":"+masterPort)
 
 	if err != nil {
-		fmt.Println("Failed to bind to port " + port)
+		fmt.Println("Failed to bind to port " + masterPort)
 		os.Exit(1)
 	}
 
-	message := arrayType(bulkString("PING"), 1)
+	message := arrayType([]string{bulkString("PING")}, 1)
 	connection.Write([]byte(message))
-}
+	// if recieve pong
+	// list, err := net.Listen("tcp", host+":"+slavePort)
 
-func contains(arr []string, element string) bool {
-	for _, v := range arr {
-		if strings.ToLower(v) == element {
-			return true
+	// if err != nil {
+	// 	fmt.Println("Failed to bind to port " + slavePort)
+	// 	os.Exit(1)
+	// }
+
+	// conn, err := list.Accept()
+
+	// if err != nil {
+	// 	fmt.Println("Error accepting connection: ", err.Error())
+	// 	os.Exit(1)
+	// }
+
+	response := Receive(connection)
+
+	if strings.Contains(response, "pong") {
+
+		message = arrayType([]string{bulkString("REPLCONF"), bulkString("listening-port"), bulkString(slavePort)}, 3)
+		connection.Write([]byte(message))
+
+		response = Receive(connection)
+
+		if strings.Contains(response, "ok") {
+
+			time.Sleep(1 * time.Second)
+			message = arrayType([]string{bulkString("REPLCONF"), bulkString("capa"), bulkString("psync2")}, 3)
+			connection.Write([]byte(message))
+
 		}
 	}
-	return false
-}
+	// if err != nil {
+	// 	fmt.Println("Error reading connection: ", err.Error())
+	// 	os.Exit(1)
+	// }
 
-func saveMapToFile(myMap map[string]string) {
-	file, _ := os.Create("data.json")
-	defer file.Close()
-
-	encoder := json.NewEncoder(file)
-	encoder.Encode(myMap)
-}
-func retrieveMapFromFile() map[string]string {
-	myMap := make(map[string]string)
-	file, _ := os.Open("data.json")
-	defer file.Close()
-
-	decoder := json.NewDecoder(file)
-	decoder.Decode(&myMap)
-	return myMap
-}
-func simpleString(s string) string {
-	return fmt.Sprintf("+%s\r\n", s)
-}
-func bulkString(s string) string {
-	if s == "-1" {
-		return fmt.Sprintf("$%s\r\n", s)
-	}
-	return fmt.Sprintf("$%d\r\n%s\r\n", len(s), s)
-}
-func arrayType(s string, length int) string {
-	return fmt.Sprintf("*%d\r\n%s", length, s)
+	// fmt.Println("recieved", n)
+	// if n > 0 {
+	// 	message = arrayType([]string{bulkString("REPLCONF"), bulkString("listening-port"), bulkString(slavePort)}, 3)
+	// 	connection.Write([]byte(message))
+	// }
 }
 
 func handleConnection(connection net.Conn, role string) {
@@ -98,15 +101,9 @@ func handleConnection(connection net.Conn, role string) {
 
 	defer connection.Close()
 	for {
-		buffer := make([]byte, 1024)
-		n, err := connection.Read(buffer)
 
-		if err != nil {
-			return
-		}
-
+		cmd := Receive(connection)
 		var commands []string
-		cmd := string(buffer[:n])
 
 		if len(cmd) > 0 && cmd[0] == '*' {
 			arr := strings.Split(cmd[4:], "\r\n")
@@ -178,6 +175,10 @@ func handleConnection(connection net.Conn, role string) {
 					message = bulkString(messageBefore)
 
 				}
+			} else if strings.Contains(first, "replconf") {
+
+				message = simpleString("OK")
+
 			}
 		}
 
@@ -203,10 +204,8 @@ func main() {
 		substrings := strings.Split(replicaof, " ")
 		masterHost := substrings[0]
 		masterPort := substrings[1]
-		handshake(masterPort, masterHost)
+		handshake(masterPort, masterHost, port)
 		role = "slave"
-		// connect(port, host, "slave")
 	}
-	// } else {
 	connect(port, host, role)
 }
