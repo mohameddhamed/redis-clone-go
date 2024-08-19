@@ -79,8 +79,10 @@ func handshake(masterPort string, host string, slavePort string) {
 }
 
 func handleConnection(connection net.Conn, role string) {
+	sendFile := false
 	layout := "2006-01-02 15:04:05.99999 -0700 MST"
 	id := "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
+	emptyRDBContent := "UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHPAQPoFY3RpbWXCbQi8ZfoIdXNlZC1tZW3CsMQQAPoIYW9mLWJhc2XAAP/wbjv+wP9aog=="
 
 	defer connection.Close()
 	for {
@@ -163,10 +165,14 @@ func handleConnection(connection net.Conn, role string) {
 
 			} else if strings.Contains(first, "psync") {
 				message = simpleString("FULLRESYNC " + id + " 0")
+				sendFile = true
 			}
 		}
 
 		connection.Write([]byte(message))
+		if sendFile {
+			connection.Write([]byte(RDBFile(emptyRDBContent)))
+		}
 	}
 }
 

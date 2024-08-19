@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -60,4 +61,13 @@ func arrayType(arr []string, length int) string {
 		message += s
 	}
 	return fmt.Sprintf("*%d\r\n%s", length, message)
+}
+func RDBFile(content string) string {
+	binaryData, err := base64.StdEncoding.DecodeString(content)
+
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+	message := string(binaryData)
+	return fmt.Sprintf("$%d\r\n%s", len(message), message)
 }
