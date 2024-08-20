@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"strconv"
 	"sync"
 
 	// "strconv"
@@ -13,6 +14,7 @@ import (
 	"os"
 )
 
+var slaveCount int
 var mu sync.Mutex
 var slavePort string
 var connMap = make(map[string]net.Conn) // Map to store connections
@@ -98,7 +100,8 @@ func handleConnection(connection net.Conn, role string) {
 
 		if sendFile {
 			connection.Write([]byte(RDBFile(emptyRDBContent)))
-			connMap["slave"] = connection
+			connMap["slave"+strconv.Itoa(slaveCount)] = connection
+			slaveCount++
 		}
 	}
 }
@@ -107,6 +110,7 @@ func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Println("Logs from your program will appear here!")
 	host := "0.0.0.0"
+	slaveCount = 0
 
 	var port string
 	var replicaof string

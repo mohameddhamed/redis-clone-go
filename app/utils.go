@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"strconv"
 	"strings"
-	"time"
 )
 
 func Receive(connection net.Conn) string {
@@ -34,61 +32,6 @@ func parseCommands(cmd string) []string {
 	}
 	return commands
 }
-func handleSet(commands []string) string {
-	myMap := make(map[string]string)
-	myMap[commands[1]] = commands[2]
-
-	propagatedMessage := arrayType([]string{bulkString("SET"), bulkString(commands[1]), bulkString(commands[2])}, 3)
-	Propagate(connMap, propagatedMessage)
-
-	saveMapToFile(myMap, "data.json")
-	return simpleString("OK")
-}
-func handleInfo(commands []string, role string, id string) string {
-	message := ""
-	key := strings.ToLower(commands[1])
-
-	if strings.Contains(key, "replication") {
-
-		messageBefore := "role:" + role + "\n"
-		messageBefore += "master_replid:" + id + "\n"
-		offset := 0
-		messageBefore += "master_repl_offset:" + strconv.Itoa(offset)
-
-		message = bulkString(messageBefore)
-
-	}
-	return message
-}
-func handleGet(commands []string, role string, layout string) string {
-	message := ""
-	key := commands[1]
-	fileName := "data.json"
-
-	if role == "slave" {
-		fileName = "data-replica.json"
-	}
-
-	mu.Lock()
-	myMap := retrieveMapFromFile(fileName)
-	value := myMap[key]
-	mu.Unlock()
-
-	if !strings.Contains(value, "|") {
-		message = bulkString(value)
-	} else {
-		args := strings.Split(value, "|")
-		deadline, _ := time.Parse(layout, args[1])
-
-		if deadline.After(time.Now()) {
-			message = bulkString((args[0]))
-		} else {
-			message = bulkString("-1")
-		}
-	}
-	return message
-}
-
 func contains(arr []string, element string) bool {
 	for _, v := range arr {
 		if strings.ToLower(v) == element {
@@ -137,27 +80,15 @@ func handshake(masterPort string, host string, slavePort string) {
 func Propagate(connMap map[string]net.Conn, message string) {
 
 	fmt.Println("propagating", slavePort)
-	connection := connMap["slave"]
+	for _, connection := range connMap {
 
-	if connection == nil {
-		fmt.Println("there's no mapped connection")
-		return
+		if connection == nil {
+			fmt.Println("there's no mapped connection")
+			return
+		}
+
+		connection.Write([]byte(message))
 	}
-
-	connection.Write([]byte(message))
-}
-func handleSetPx(commands []string, layout string) string {
-	myMap := make(map[string]string)
-
-	currentTime := time.Now()
-	expiry, _ := strconv.Atoi(commands[4])
-	duration := time.Duration(expiry) * time.Millisecond
-	deadline := currentTime.Add(duration).Format(layout)
-
-	value := commands[2] + "|" + deadline
-	myMap[commands[1]] = value
-	saveMapToFile(myMap, "data.json")
-	return simpleString("OK")
 }
 
 func saveMapToFile(myMap map[string]string, fileName string) {
