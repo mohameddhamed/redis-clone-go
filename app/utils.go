@@ -16,8 +16,8 @@ func Receive(connection net.Conn) string {
 	n, err := connection.Read(buffer)
 
 	if err != nil {
-		// fmt.Println("Error on the Receive fct")
-		os.Exit(0)
+		fmt.Println("Error on the Receive fct")
+		// os.Exit(0)
 	}
 
 	response := string(buffer[:n])
