@@ -3,9 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"strconv"
 	"sync"
-	"time"
 
 	// "strconv"
 	"strings"
@@ -16,6 +14,8 @@ import (
 )
 
 var mu sync.Mutex
+var slavePort string
+var connMap = make(map[string]net.Conn) // Map to store connections
 
 func connect(port string, host string, role string) {
 
@@ -41,43 +41,6 @@ func connect(port string, host string, role string) {
 	}
 }
 
-func handshake(masterPort string, host string, slavePort string) {
-
-	connection, err := net.Dial("tcp", host+":"+masterPort)
-
-	if err != nil {
-		fmt.Println("Failed to bind to port " + masterPort)
-		os.Exit(1)
-	}
-
-	message := arrayType([]string{bulkString("PING")}, 1)
-	connection.Write([]byte(message))
-
-	response := Receive(connection)
-
-	if strings.Contains(response, "pong") {
-
-		message = arrayType([]string{bulkString("REPLCONF"), bulkString("listening-port"), bulkString(slavePort)}, 3)
-		connection.Write([]byte(message))
-
-		response = Receive(connection)
-
-		if strings.Contains(response, "ok") {
-
-			message = arrayType([]string{bulkString("REPLCONF"), bulkString("capa"), bulkString("psync2")}, 3)
-			connection.Write([]byte(message))
-
-			response = Receive(connection)
-
-			if strings.Contains(response, "ok") {
-
-				message = arrayType([]string{bulkString("PSYNC"), bulkString("?"), "$2\r\n-1\r\n"}, 3)
-				connection.Write([]byte(message))
-			}
-		}
-	}
-}
-
 func handleConnection(connection net.Conn, role string) {
 	sendFile := false
 	layout := "2006-01-02 15:04:05.99999 -0700 MST"
@@ -88,14 +51,8 @@ func handleConnection(connection net.Conn, role string) {
 	for {
 
 		cmd := Receive(connection)
-		var commands []string
 
-		if len(cmd) > 0 && cmd[0] == '*' {
-			arr := strings.Split(cmd[4:], "\r\n")
-			for i := 1; i < len(arr); i += 2 {
-				commands = append(commands, strings.TrimSpace(arr[i]))
-			}
-		}
+		commands := parseCommands(cmd)
 
 		message := simpleString("PONG")
 
@@ -103,75 +60,45 @@ func handleConnection(connection net.Conn, role string) {
 
 			first := strings.ToLower(commands[0])
 
-			if strings.Contains(first, "echo") {
+			switch {
+
+			case strings.Contains(first, "echo"):
+
 				message = bulkString(commands[1])
 
-			} else if strings.Contains(first, "set") && contains(commands, "px") {
-				myMap := make(map[string]string)
+			case strings.Contains(first, "set") && contains(commands, "px"):
 
-				currentTime := time.Now()
-				expiry, _ := strconv.Atoi(commands[4])
-				duration := time.Duration(expiry) * time.Millisecond
-				deadline := currentTime.Add(duration).Format(layout)
+				message = handleSetPx(commands, layout)
 
-				value := commands[2] + "|" + deadline
-				myMap[commands[1]] = value
-				saveMapToFile(myMap)
-				message = simpleString("OK")
+			case strings.Contains(first, "set"):
 
-			} else if strings.Contains(first, "set") {
-				myMap := make(map[string]string)
-				myMap[commands[1]] = commands[2]
-				saveMapToFile(myMap)
-				message = simpleString("OK")
+				message = handleSet(commands)
 
-			} else if strings.Contains(first, "get") {
-				key := commands[1]
+			case strings.Contains(first, "get"):
 
-				mu.Lock()
-				myMap := retrieveMapFromFile()
-				value := myMap[key]
-				mu.Unlock()
+				message = handleGet(commands, role, layout)
 
-				if !strings.Contains(value, "|") {
-					message = bulkString(value)
-				} else {
-					args := strings.Split(value, "|")
-					deadline, _ := time.Parse(layout, args[1])
+			case strings.Contains(first, "info"):
 
-					if deadline.After(time.Now()) {
-						message = bulkString((args[0]))
-					} else {
-						message = bulkString("-1")
-					}
-				}
-			} else if strings.Contains(first, "info") {
+				message = handleInfo(commands, role, id)
 
-				key := strings.ToLower(commands[1])
-
-				if strings.Contains(key, "replication") {
-
-					messageBefore := "role:" + role + "\n"
-					messageBefore += "master_replid:" + id + "\n"
-					offset := 0
-					messageBefore += "master_repl_offset:" + strconv.Itoa(offset)
-
-					message = bulkString(messageBefore)
-
-				}
-			} else if strings.Contains(first, "replconf") {
+			case strings.Contains(first, "replconf"):
 
 				message = simpleString("OK")
 
-			} else if strings.Contains(first, "psync") {
+			case strings.Contains(first, "psync"):
+
 				message = simpleString("FULLRESYNC " + id + " 0")
 				sendFile = true
+
 			}
 		}
 
 		connection.Write([]byte(message))
+
 		if sendFile {
 			connection.Write([]byte(RDBFile(emptyRDBContent)))
+			connMap["slave"] = connection
 		}
 	}
 }
