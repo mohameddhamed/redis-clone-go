@@ -13,12 +13,12 @@ import (
 
 func Receive(connection net.Conn) string {
 	buffer := make([]byte, 1024)
-	n, err := connection.Read(buffer)
+	n, _ := connection.Read(buffer)
 
-	if err != nil {
-		fmt.Println("Error on the Receive fct")
-		// os.Exit(0)
-	}
+	// if err != nil {
+	// 	fmt.Println("Error on the Receive fct")
+	// 	// os.Exit(0)
+	// }
 
 	response := string(buffer[:n])
 	return strings.ToLower(response)
