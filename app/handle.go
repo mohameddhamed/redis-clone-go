@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -10,10 +11,25 @@ func handleSet(commands []string) string {
 	myMap := make(map[string]string)
 	myMap[commands[1]] = commands[2]
 
-	propagatedMessage := arrayType([]string{bulkString("SET"), bulkString(commands[1]), bulkString(commands[2])}, 3)
-	Propagate(connMap, propagatedMessage)
+	suffix := ""
+	fmt.Println("this is the len", len(connMap))
 
-	saveMapToFile(myMap, "data.json")
+	// Master
+	if len(connMap) > 0 {
+		fmt.Println("I am the master")
+
+		propagatedMessage := arrayType([]string{bulkString("SET"), bulkString(commands[1]), bulkString(commands[2])}, 3)
+		Propagate(connMap, propagatedMessage)
+
+	} else {
+		fmt.Println("oh my")
+		// Replica
+		// currentTime := time.Now().Format("15:04:05")
+		// suffix = "replica" + currentTime
+	}
+	fileName = "data" + suffix + ".json"
+	fmt.Println("the filename is ", fileName)
+	saveMapToFile(myMap, fileName)
 	return simpleString("OK")
 }
 func handleInfo(commands []string, role string, id string) string {
@@ -35,16 +51,19 @@ func handleInfo(commands []string, role string, id string) string {
 func handleGet(commands []string, role string, layout string) string {
 	message := ""
 	key := commands[1]
-	fileName := "data.json"
+	// fileName := "data.json"
 
-	if role == "slave" {
-		fileName = "data-replica.json"
-	}
+	// if role == "slave" {
+	// 	fileName = "data-replica.json"
+	// }
 
 	mu.Lock()
 	myMap := retrieveMapFromFile(fileName)
 	value := myMap[key]
 	mu.Unlock()
+
+	fmt.Printf(role)
+	// value = "456"
 
 	if !strings.Contains(value, "|") {
 		message = bulkString(value)

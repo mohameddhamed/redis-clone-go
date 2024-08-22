@@ -71,6 +71,8 @@ func handshake(masterPort string, host string, slavePort string) {
 
 			if strings.Contains(response, "ok") {
 
+				fmt.Println("[SLAVE] got ok as response from", connection.RemoteAddr())
+				fmt.Println("[SLAVE] got ok as response from local", connection.LocalAddr())
 				message = arrayType([]string{bulkString("PSYNC"), bulkString("?"), "$2\r\n-1\r\n"}, 3)
 				connection.Write([]byte(message))
 			}
@@ -79,20 +81,36 @@ func handshake(masterPort string, host string, slavePort string) {
 }
 func Propagate(connMap map[string]net.Conn, message string) {
 
-	fmt.Println("propagating", slavePort)
 	for _, connection := range connMap {
 
 		if connection == nil {
 			fmt.Println("there's no mapped connection")
 			return
 		}
+		// fmt.Println("Remote address:", connection.RemoteAddr())
+		// fmt.Println("trying to message", message)
 
-		connection.Write([]byte(message))
+		// connection.Write([]byte(message))
+		fmt.Println("[MASTER] this is connection.remoteadd", connection.RemoteAddr())
+		fmt.Println("[MASTER] this is connection.localadd", connection.LocalAddr())
+		conn, err := net.Dial("tcp", "0.0.0.0:6380")
+
+		if err != nil {
+			fmt.Println("Failed to bind to port 6380")
+			os.Exit(1)
+		}
+		fmt.Println("[MASTER] propagating to ", conn.RemoteAddr())
+
+		// message := arrayType([]string{bulkString("PING")}, 1)
+		conn.Write([]byte(message))
 	}
 }
 
 func saveMapToFile(myMap map[string]string, fileName string) {
-	file, _ := os.Create(fileName)
+	file, err := os.Create(fileName)
+	if err != nil {
+		fmt.Println("error in creating file", fileName)
+	}
 	defer file.Close()
 
 	encoder := json.NewEncoder(file)
@@ -100,7 +118,11 @@ func saveMapToFile(myMap map[string]string, fileName string) {
 }
 func retrieveMapFromFile(fileName string) map[string]string {
 	myMap := make(map[string]string)
-	file, _ := os.Open(fileName)
+	file, err := os.Open(fileName)
+	if err != nil {
+		fmt.Println("there's an error here")
+	}
+	fmt.Println("opened the file", fileName)
 	defer file.Close()
 
 	decoder := json.NewDecoder(file)
@@ -131,4 +153,31 @@ func RDBFile(content string) string {
 	}
 	message := string(binaryData)
 	return fmt.Sprintf("$%d\r\n%s", len(message), message)
+}
+func connect2(port string, host string, role string) {
+
+	listener, err := net.Listen("tcp", host+":"+port)
+
+	if err != nil {
+		fmt.Println("Failed to bind to port " + port)
+		os.Exit(1)
+	}
+	fmt.Println("we're listening to", port)
+
+	defer listener.Close()
+
+	// for {
+	fmt.Println("I am another ", role)
+	fmt.Println("[SLAVE] my network addr is ", listener.Addr())
+
+	connection, err := listener.Accept()
+
+	if err != nil {
+		fmt.Println("Error accepting connection: ", err.Error())
+		// os.Exit(1)
+	}
+
+	fmt.Println("[SLAVE] listening to", connection.RemoteAddr())
+	handleConnection(connection, role)
+	// }
 }

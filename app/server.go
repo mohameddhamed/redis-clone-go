@@ -14,6 +14,7 @@ import (
 	"os"
 )
 
+var fileName string
 var slaveCount int
 var mu sync.Mutex
 var slavePort string
@@ -27,10 +28,12 @@ func connect(port string, host string, role string) {
 		fmt.Println("Failed to bind to port " + port)
 		os.Exit(1)
 	}
+	fmt.Println("we're listening ", port)
 
 	defer listener.Close()
 
 	for {
+		fmt.Println("I am a ", role)
 
 		connection, err := listener.Accept()
 
@@ -39,6 +42,7 @@ func connect(port string, host string, role string) {
 			os.Exit(1)
 		}
 
+		fmt.Println("listening to", connection.RemoteAddr())
 		go handleConnection(connection, role)
 	}
 }
@@ -48,6 +52,7 @@ func handleConnection(connection net.Conn, role string) {
 	layout := "2006-01-02 15:04:05.99999 -0700 MST"
 	id := "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
 	emptyRDBContent := "UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHPAQPoFY3RpbWXCbQi8ZfoIdXNlZC1tZW3CsMQQAPoIYW9mLWJhc2XAAP/wbjv+wP9aog=="
+	fmt.Println("I am handling ", role)
 
 	defer connection.Close()
 	for {
@@ -56,9 +61,13 @@ func handleConnection(connection net.Conn, role string) {
 
 		commands := parseCommands(cmd)
 
+		// fmt.Println("my role is ", role)
+		// fmt.Println("I received ", commands)
+
 		message := simpleString("PONG")
 
 		if len(commands) > 0 {
+			fmt.Println("received ", commands)
 
 			first := strings.ToLower(commands[0])
 
@@ -74,6 +83,7 @@ func handleConnection(connection net.Conn, role string) {
 
 			case strings.Contains(first, "set"):
 
+				fmt.Println("I received a set cmd")
 				message = handleSet(commands)
 
 			case strings.Contains(first, "get"):
@@ -100,6 +110,7 @@ func handleConnection(connection net.Conn, role string) {
 
 		if sendFile {
 			connection.Write([]byte(RDBFile(emptyRDBContent)))
+			// fmt.Println("here printing", connection.RemoteAddr())
 			connMap["slave"+strconv.Itoa(slaveCount)] = connection
 			slaveCount++
 		}
@@ -111,6 +122,7 @@ func main() {
 	fmt.Println("Logs from your program will appear here!")
 	host := "0.0.0.0"
 	slaveCount = 0
+	fileName = "data.json"
 
 	var port string
 	var replicaof string
@@ -127,6 +139,8 @@ func main() {
 		masterPort := substrings[1]
 		handshake(masterPort, masterHost, port)
 		role = "slave"
+		connect2(port, host, role)
+	} else {
+		connect(port, host, role)
 	}
-	connect(port, host, role)
 }
