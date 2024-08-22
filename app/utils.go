@@ -9,6 +9,10 @@ import (
 	"strings"
 )
 
+// there are 2 problems
+// 1. propagation on the slave side
+// 2. the slave is writing back to master instead of to client
+
 func Receive(connection net.Conn) string {
 	buffer := make([]byte, 1024)
 	n, _ := connection.Read(buffer)
@@ -87,6 +91,8 @@ func Propagate(connMap map[string]net.Conn, message string) {
 			return
 		}
 
+		// connection.Write([]byte(message))
+		// message = simpleString("PING")
 		connection.Write([]byte(message))
 	}
 }
