@@ -10,8 +10,13 @@ func handleSet(commands []string) string {
 	myMap := make(map[string]string)
 	myMap[commands[1]] = commands[2]
 
-	propagatedMessage := arrayType([]string{bulkString("SET"), bulkString(commands[1]), bulkString(commands[2])}, 3)
-	Propagate(connMap, propagatedMessage)
+	// master
+	if len(connMap) > 0 {
+
+		propagatedMessage := arrayType([]string{bulkString("SET"), bulkString(commands[1]), bulkString(commands[2])}, 3)
+		Propagate(connMap, propagatedMessage)
+
+	}
 
 	saveMapToFile(myMap, "data.json")
 	return simpleString("OK")
@@ -38,7 +43,7 @@ func handleGet(commands []string, role string, layout string) string {
 	fileName := "data.json"
 
 	if role == "slave" {
-		fileName = "data-replica.json"
+		fileName = "data.json"
 	}
 
 	mu.Lock()
