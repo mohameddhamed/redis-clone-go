@@ -52,7 +52,8 @@ func handleConnection(connection net.Conn, role string) {
 	layout := "2006-01-02 15:04:05.99999 -0700 MST"
 	id := "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
 	emptyRDBContent := "UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHPAQPoFY3RpbWXCbQi8ZfoIdXNlZC1tZW3CsMQQAPoIYW9mLWJhc2XAAP/wbjv+wP9aog=="
-	fmt.Println("I am handling ", role)
+	announcement := fmt.Sprintf("[%s] I am handling connection", role)
+	fmt.Println(announcement)
 
 	defer connection.Close()
 	for {
@@ -67,7 +68,8 @@ func handleConnection(connection net.Conn, role string) {
 		message := simpleString("PONG")
 
 		if len(commands) > 0 {
-			fmt.Println("received ", commands)
+			announcement := fmt.Sprintf("[%s] received %s", role, commands)
+			fmt.Println(announcement)
 
 			first := strings.ToLower(commands[0])
 

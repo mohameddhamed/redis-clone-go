@@ -22,10 +22,10 @@ func handleSet(commands []string) string {
 		Propagate(connMap, propagatedMessage)
 
 	} else {
-		fmt.Println("oh my")
+		fmt.Println("[SLAVE] oh my")
 		// Replica
 		// currentTime := time.Now().Format("15:04:05")
-		// suffix = "replica" + currentTime
+		// suffix = "-replica"
 	}
 	fileName = "data" + suffix + ".json"
 	fmt.Println("the filename is ", fileName)
@@ -51,7 +51,7 @@ func handleInfo(commands []string, role string, id string) string {
 func handleGet(commands []string, role string, layout string) string {
 	message := ""
 	key := commands[1]
-	// fileName := "data.json"
+	fileName := "data.json"
 
 	// if role == "slave" {
 	// 	fileName = "data-replica.json"
@@ -62,7 +62,8 @@ func handleGet(commands []string, role string, layout string) string {
 	value := myMap[key]
 	mu.Unlock()
 
-	fmt.Printf(role)
+	announcement := fmt.Sprintf("[%s] I am getting from %s", role, fileName)
+	fmt.Println(announcement)
 	// value = "456"
 
 	if !strings.Contains(value, "|") {

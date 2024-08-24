@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strings"
@@ -124,6 +125,14 @@ func retrieveMapFromFile(fileName string) map[string]string {
 	}
 	fmt.Println("opened the file", fileName)
 	defer file.Close()
+
+	content, err := io.ReadAll(file)
+	if err != nil {
+		fmt.Println("Error reading file:", err)
+	}
+
+	// Step 3: Print the contents
+	fmt.Println(string(content))
 
 	decoder := json.NewDecoder(file)
 	decoder.Decode(&myMap)
