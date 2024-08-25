@@ -2,16 +2,16 @@ package main
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 )
 
 func Receive(connection net.Conn) string {
-	buffer := make([]byte, 1024)
+
+	buffer := make([]byte, 2048)
 	n, _ := connection.Read(buffer)
 
 	// if err != nil {
@@ -22,16 +22,56 @@ func Receive(connection net.Conn) string {
 	response := string(buffer[:n])
 	return strings.ToLower(response)
 }
-func parseCommands(cmd string) []string {
-	var commands []string
 
-	if len(cmd) > 0 && cmd[0] == '*' {
-		arr := strings.Split(cmd[4:], "\r\n")
-		for i := 1; i < len(arr); i += 2 {
-			commands = append(commands, strings.TrimSpace(arr[i]))
+func parseCommands(cmd string) [][]string {
+	var allCommands [][]string
+	lines := strings.Split(cmd, "\n") // Split input by newlines
+	i := 0
+
+	for i < len(lines) {
+		line := strings.TrimSpace(lines[i])
+
+		// Skip empty lines
+		if line == "" {
+			i++
+			continue
+		}
+
+		// Check for array indicator (e.g., *3 means 3 subsequent items)
+		if line[0] == '*' {
+			count, err := strconv.Atoi(line[1:])
+			if err != nil || count <= 0 {
+				i++
+				continue // Skip lines that are incorrectly formatted
+			}
+
+			var commands []string
+
+			// Process subsequent lines for the specified count
+			for j := 0; j < count; j++ {
+				i++
+				if i >= len(lines) {
+					break
+				}
+
+				line = strings.TrimSpace(lines[i])
+				if strings.HasPrefix(line, "$") {
+					// The next line should be the actual command part
+					i++
+					if i < len(lines) {
+						cmdLine := strings.TrimSpace(lines[i])
+						commands = append(commands, cmdLine)
+					}
+				}
+			}
+
+			allCommands = append(allCommands, commands)
+		} else {
+			i++
 		}
 	}
-	return commands
+
+	return allCommands
 }
 func contains(arr []string, element string) bool {
 	for _, v := range arr {
@@ -42,7 +82,7 @@ func contains(arr []string, element string) bool {
 	return false
 }
 
-func handshake(masterPort string, host string, slavePort string) {
+func handshake(masterPort string, host string, slavePort string) net.Conn {
 
 	connection, err := net.Dial("tcp", host+":"+masterPort)
 
@@ -79,6 +119,7 @@ func handshake(masterPort string, host string, slavePort string) {
 			}
 		}
 	}
+	return connection
 }
 func Propagate(connMap map[string]net.Conn, message string) {
 
@@ -88,56 +129,41 @@ func Propagate(connMap map[string]net.Conn, message string) {
 			fmt.Println("there's no mapped connection")
 			return
 		}
-		// fmt.Println("Remote address:", connection.RemoteAddr())
-		// fmt.Println("trying to message", message)
-
-		// connection.Write([]byte(message))
-		fmt.Println("[MASTER] this is connection.remoteadd", connection.RemoteAddr())
-		fmt.Println("[MASTER] this is connection.localadd", connection.LocalAddr())
-		conn, err := net.Dial("tcp", "0.0.0.0:6380")
-
-		if err != nil {
-			fmt.Println("Failed to bind to port 6380")
-			os.Exit(1)
-		}
-		fmt.Println("[MASTER] propagating to ", conn.RemoteAddr())
-
-		// message := arrayType([]string{bulkString("PING")}, 1)
-		conn.Write([]byte(message))
+		connection.Write([]byte(message))
 	}
 }
 
-func saveMapToFile(myMap map[string]string, fileName string) {
-	file, err := os.Create(fileName)
-	if err != nil {
-		fmt.Println("error in creating file", fileName)
-	}
-	defer file.Close()
+// func saveMapToFile(myMap map[string]string, fileName string) {
+// 	file, err := os.Create(fileName)
+// 	if err != nil {
+// 		fmt.Println("error in creating file", fileName)
+// 	}
+// 	defer file.Close()
 
-	encoder := json.NewEncoder(file)
-	encoder.Encode(myMap)
-}
-func retrieveMapFromFile(fileName string) map[string]string {
-	myMap := make(map[string]string)
-	file, err := os.Open(fileName)
-	if err != nil {
-		fmt.Println("there's an error here")
-	}
-	fmt.Println("opened the file", fileName)
-	defer file.Close()
+// 	encoder := json.NewEncoder(file)
+// 	encoder.Encode(myMap)
+// }
+// func retrieveMapFromFile(fileName string) map[string]string {
+// 	myMap := make(map[string]string)
+// 	file, err := os.Open(fileName)
+// 	if err != nil {
+// 		fmt.Println("there's an error here")
+// 	}
+// 	fmt.Println("opened the file", fileName)
+// 	defer file.Close()
 
-	content, err := io.ReadAll(file)
-	if err != nil {
-		fmt.Println("Error reading file:", err)
-	}
+// 	content, err := io.ReadAll(file)
+// 	if err != nil {
+// 		fmt.Println("Error reading file:", err)
+// 	}
 
-	// Step 3: Print the contents
-	fmt.Println(string(content))
+// 	// Step 3: Print the contents
+// 	fmt.Println(string(content))
 
-	decoder := json.NewDecoder(file)
-	decoder.Decode(&myMap)
-	return myMap
-}
+//		decoder := json.NewDecoder(file)
+//		decoder.Decode(&myMap)
+//		return myMap
+//	}
 func simpleString(s string) string {
 	return fmt.Sprintf("+%s\r\n", s)
 }
@@ -163,30 +189,31 @@ func RDBFile(content string) string {
 	message := string(binaryData)
 	return fmt.Sprintf("$%d\r\n%s", len(message), message)
 }
-func connect2(port string, host string, role string) {
 
-	listener, err := net.Listen("tcp", host+":"+port)
+// func connect2(port string, host string, role string) {
 
-	if err != nil {
-		fmt.Println("Failed to bind to port " + port)
-		os.Exit(1)
-	}
-	fmt.Println("we're listening to", port)
+// 	listener, err := net.Listen("tcp", host+":"+port)
 
-	defer listener.Close()
+// 	if err != nil {
+// 		fmt.Println("Failed to bind to port " + port)
+// 		os.Exit(1)
+// 	}
+// 	fmt.Println("we're listening to", port)
 
-	// for {
-	fmt.Println("I am another ", role)
-	fmt.Println("[SLAVE] my network addr is ", listener.Addr())
+// 	defer listener.Close()
 
-	connection, err := listener.Accept()
+// 	// for {
+// 	fmt.Println("I am another ", role)
+// 	fmt.Println("[SLAVE] my network addr is ", listener.Addr())
 
-	if err != nil {
-		fmt.Println("Error accepting connection: ", err.Error())
-		// os.Exit(1)
-	}
+// 	connection, err := listener.Accept()
 
-	fmt.Println("[SLAVE] listening to", connection.RemoteAddr())
-	handleConnection(connection, role)
-	// }
-}
+// 	if err != nil {
+// 		fmt.Println("Error accepting connection: ", err.Error())
+// 		// os.Exit(1)
+// 	}
+
+// 	fmt.Println("[SLAVE] listening to", connection.RemoteAddr())
+// 	handleConnection(connection, role)
+// 	// }
+// }
