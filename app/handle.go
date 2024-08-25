@@ -1,24 +1,25 @@
 package main
 
 import (
+	"fmt"
+	"net"
 	"strconv"
 	"strings"
 	"time"
 )
 
 func handleSet(commands []string) string {
-	myMap := make(map[string]string)
+	mu.Lock()
 	myMap[commands[1]] = commands[2]
+	mu.Unlock()
 
-	// master
+	// Master
 	if len(connMap) > 0 {
 
 		propagatedMessage := arrayType([]string{bulkString("SET"), bulkString(commands[1]), bulkString(commands[2])}, 3)
 		Propagate(connMap, propagatedMessage)
 
 	}
-
-	saveMapToFile(myMap, "data.json")
 	return simpleString("OK")
 }
 func handleInfo(commands []string, role string, id string) string {
@@ -40,14 +41,9 @@ func handleInfo(commands []string, role string, id string) string {
 func handleGet(commands []string, role string, layout string) string {
 	message := ""
 	key := commands[1]
-	fileName := "data.json"
-
-	if role == "slave" {
-		fileName = "data.json"
-	}
+	fmt.Println("this is the map", myMap)
 
 	mu.Lock()
-	myMap := retrieveMapFromFile(fileName)
 	value := myMap[key]
 	mu.Unlock()
 
@@ -66,7 +62,6 @@ func handleGet(commands []string, role string, layout string) string {
 	return message
 }
 func handleSetPx(commands []string, layout string) string {
-	myMap := make(map[string]string)
 
 	currentTime := time.Now()
 	expiry, _ := strconv.Atoi(commands[4])
@@ -75,6 +70,75 @@ func handleSetPx(commands []string, layout string) string {
 
 	value := commands[2] + "|" + deadline
 	myMap[commands[1]] = value
-	saveMapToFile(myMap, "data.json")
 	return simpleString("OK")
+}
+func handlePropagation(connection net.Conn) {
+	for {
+
+		cmd := Receive(connection)
+		Execute(cmd, "slave")
+	}
+}
+func Execute(cmd string, role string) (string, bool) {
+	commands := parseCommands(cmd)
+
+	sendFile := false
+	layout := "2006-01-02 15:04:05.99999 -0700 MST"
+	id := "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
+	message := simpleString("PONG")
+
+	for _, command := range commands {
+
+		if len(command) > 0 {
+			announcement := fmt.Sprintf("[%s] received %s", role, command)
+			fmt.Println(announcement)
+
+			first := strings.ToLower(command[0])
+
+			switch {
+
+			case strings.Contains(first, "echo"):
+
+				message = bulkString(command[1])
+
+			case strings.Contains(first, "set") && contains(command, "px"):
+
+				message = handleSetPx(command, layout)
+
+			case strings.Contains(first, "set"):
+
+				// fmt.Println("I received a set cmd")
+				// message = handleSet(command)
+				if role == "slave" {
+					mu.Lock()
+					myMap[command[1]] = command[2]
+					mu.Unlock()
+					fmt.Println("[SLAVE] Updated myMap:", myMap)
+					// message = simpleString("OK")
+				} else {
+					message = handleSet(command)
+				}
+
+			case strings.Contains(first, "get"):
+
+				message = handleGet(command, role, layout)
+
+			case strings.Contains(first, "info"):
+
+				message = handleInfo(command, role, id)
+
+			case strings.Contains(first, "replconf"):
+
+				message = simpleString("OK")
+
+			case strings.Contains(first, "psync"):
+
+				message = simpleString("FULLRESYNC " + id + " 0")
+				sendFile = true
+
+			}
+		}
+	}
+
+	return message, sendFile
 }
