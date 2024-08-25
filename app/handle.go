@@ -29,7 +29,7 @@ func handleSet(commands []string) string {
 	}
 	fileName = "data" + suffix + ".json"
 	fmt.Println("the filename is ", fileName)
-	saveMapToFile(myMap, fileName)
+	// saveMapToFile(myMap, fileName)
 	return simpleString("OK")
 }
 func handleInfo(commands []string, role string, id string) string {
@@ -56,10 +56,12 @@ func handleGet(commands []string, role string, layout string) string {
 	// if role == "slave" {
 	// 	fileName = "data-replica.json"
 	// }
+	fmt.Println("this is the map", myMap)
 
 	mu.Lock()
-	myMap := retrieveMapFromFile(fileName)
+	// myMap := retrieveMapFromFile(fileName)
 	value := myMap[key]
+	fmt.Println("[master] this is the value", value)
 	mu.Unlock()
 
 	announcement := fmt.Sprintf("[%s] I am getting from %s", role, fileName)

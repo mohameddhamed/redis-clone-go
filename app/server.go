@@ -14,6 +14,7 @@ import (
 	"os"
 )
 
+var myMap map[string]string
 var fileName string
 var slaveCount int
 var mu sync.Mutex
@@ -125,6 +126,7 @@ func main() {
 	host := "0.0.0.0"
 	slaveCount = 0
 	fileName = "data.json"
+	myMap = make(map[string]string)
 
 	var port string
 	var replicaof string
