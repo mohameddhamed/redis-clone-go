@@ -84,7 +84,11 @@ func handleAcknowledgment(connection net.Conn) {
 
 		cmd := Receive(connection)
 		commands := parseCommands(cmd)
-		fmt.Println("ack", commands[0])
+		if len(cmd) > 0 {
+			// fmt.Println("ack", cmd)
+			fmt.Println("parsed ", commands)
+
+		}
 		if len(commands) > 0 && contains(commands[0], "replconf") {
 			fmt.Println("wow")
 

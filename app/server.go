@@ -47,6 +47,11 @@ func connect(port string, host string, role string) {
 		}
 
 		fmt.Println("listening to", connection.RemoteAddr())
+
+		if role == "slave" {
+			go handleAcknowledgment(connection)
+		}
+
 		go handleConnection(connection, role)
 	}
 }
@@ -73,9 +78,6 @@ func handleConnection(connection net.Conn, role string) {
 			slaveCount++
 
 			sendFile = false
-		}
-		if role == "slave" {
-			handleAcknowledgment(connection)
 		}
 
 	}
