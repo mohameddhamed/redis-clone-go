@@ -79,6 +79,25 @@ func handlePropagation(connection net.Conn) {
 		Execute(cmd, "slave")
 	}
 }
+func handleAcknowledgment(connection net.Conn) {
+	for {
+
+		cmd := Receive(connection)
+		commands := parseCommands(cmd)
+		fmt.Println("ack", commands[0])
+		if len(commands) > 0 && contains(commands[0], "replconf") {
+			fmt.Println("wow")
+
+			reply := arrayType([]string{bulkString("REPLCONF"), bulkString("ACK"), bulkString("0")}, 3)
+			connection.Write([]byte(reply))
+
+		}
+	}
+}
+func getAck(connection net.Conn) {
+	connection.Write([]byte(arrayType([]string{bulkString("replconf"), bulkString("getack"), bulkString("*")}, 3)))
+}
+
 func Execute(cmd string, role string) (string, bool) {
 	commands := parseCommands(cmd)
 
@@ -107,14 +126,11 @@ func Execute(cmd string, role string) (string, bool) {
 
 			case strings.Contains(first, "set"):
 
-				// fmt.Println("I received a set cmd")
-				// message = handleSet(command)
 				if role == "slave" {
 					mu.Lock()
 					myMap[command[1]] = command[2]
 					mu.Unlock()
 					fmt.Println("[SLAVE] Updated myMap:", myMap)
-					// message = simpleString("OK")
 				} else {
 					message = handleSet(command)
 				}
@@ -127,7 +143,13 @@ func Execute(cmd string, role string) (string, bool) {
 
 				message = handleInfo(command, role, id)
 
-			case strings.Contains(first, "replconf"):
+			case strings.Contains(first, "replconf") && contains(command, "getack"):
+
+				fmt.Println("[slave] I received a replconf")
+
+				message = arrayType([]string{bulkString("REPLCONF"), bulkString("ACK"), bulkString("0")}, 3)
+
+			case strings.Contains(first, "replconf") && (contains(command, "listening-port") || contains(command, "capa")):
 
 				message = simpleString("OK")
 

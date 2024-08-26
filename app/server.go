@@ -32,7 +32,9 @@ func connect(port string, host string, role string) {
 	}
 	fmt.Println("we're listening ", port)
 
-	time.Sleep(1 * time.Second)
+	if role == "slave" {
+		time.Sleep(2 * time.Second)
+	}
 
 	for {
 		fmt.Println("I am a ", role)
@@ -64,8 +66,16 @@ func handleConnection(connection net.Conn, role string) {
 
 		if sendFile {
 			connection.Write([]byte(RDBFile(emptyRDBContent)))
+
+			getAck(connection)
+
 			connMap["slave"+strconv.Itoa(slaveCount)] = connection
 			slaveCount++
+
+			sendFile = false
+		}
+		if role == "slave" {
+			handleAcknowledgment(connection)
 		}
 
 	}
@@ -95,6 +105,7 @@ func main() {
 		role = "slave"
 		defer connection.Close()
 
+		go handleAcknowledgment(connection)
 		go handlePropagation(connection)
 	}
 	myMap = make(map[string]string)
