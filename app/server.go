@@ -107,7 +107,7 @@ func main() {
 		role = "slave"
 		defer connection.Close()
 
-		go handleAcknowledgment(connection)
+		// go handleAcknowledgment(connection)
 		go handlePropagation(connection)
 	}
 	myMap = make(map[string]string)

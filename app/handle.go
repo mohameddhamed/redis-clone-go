@@ -76,7 +76,21 @@ func handlePropagation(connection net.Conn) {
 	for {
 
 		cmd := Receive(connection)
-		Execute(cmd, "slave")
+		commands := parseCommands(cmd)
+		message, _ := Execute(cmd, "slave")
+
+		if len(cmd) > 0 {
+			// fmt.Println("ack", cmd)
+			fmt.Println("parsed ", commands)
+
+		}
+		if len(commands) > 0 && contains(commands[0], "replconf") {
+			fmt.Println("wow")
+
+			// reply := arrayType([]string{bulkString("REPLCONF"), bulkString("ACK"), bulkString("0")}, 3)
+			connection.Write([]byte(message))
+
+		}
 	}
 }
 func handleAcknowledgment(connection net.Conn) {
