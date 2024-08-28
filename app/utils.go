@@ -1,223 +1,170 @@
 package main
 
 import (
-	"encoding/base64"
+	"bufio"
+	"encoding/hex"
+	"flag"
 	"fmt"
+	"math/rand"
 	"net"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
-// there are 2 problems
-// 1. propagation on the slave side
-// 2. the slave is writing back to master instead of to client
-
-func Receive(connection net.Conn) string {
-
-	buffer := make([]byte, 2048)
-	n, _ := connection.Read(buffer)
-
-	// if err != nil {
-	// 	fmt.Println("Error on the Receive fct")
-	// 	// os.Exit(0)
-	// }
-
-	response := string(buffer[:n])
-	return strings.ToLower(response)
+func handshake(masterConn net.Conn) *bufio.Reader {
+	reader := bufio.NewReader(masterConn)
+	masterConn.Write([]byte(encodeStringArray([]string{"PING"})))
+	reader.ReadString('\n')
+	masterConn.Write([]byte(encodeStringArray([]string{"REPLCONF", "listening-port", strconv.Itoa(config.port)})))
+	reader.ReadString('\n')
+	masterConn.Write([]byte(encodeStringArray([]string{"REPLCONF", "capa", "psync2"})))
+	reader.ReadString('\n')
+	masterConn.Write([]byte(encodeStringArray([]string{"PSYNC", "?", "-1"})))
+	reader.ReadString('\n')
+	return reader
 }
-
-func parseCommands(cmd string) [][]string {
-	var allCommands [][]string
-	lines := strings.Split(cmd, "\n") // Split input by newlines
-	i := 0
-
-	for i < len(lines) {
-		line := strings.TrimSpace(lines[i])
-
-		// Skip empty lines
-		if line == "" {
-			i++
-			continue
-		}
-
-		// Check for array indicator (e.g., *3 means 3 subsequent items)
-		if line[0] == '*' {
-			count, err := strconv.Atoi(line[1:])
-			if err != nil || count <= 0 {
-				i++
-				continue // Skip lines that are incorrectly formatted
-			}
-
-			var commands []string
-
-			// Process subsequent lines for the specified count
-			for j := 0; j < count; j++ {
-				i++
-				if i >= len(lines) {
-					break
-				}
-
-				line = strings.TrimSpace(lines[i])
-				if strings.HasPrefix(line, "$") {
-					// The next line should be the actual command part
-					i++
-					if i < len(lines) {
-						cmdLine := strings.TrimSpace(lines[i])
-						commands = append(commands, cmdLine)
-					}
-				}
-			}
-
-			allCommands = append(allCommands, commands)
-		} else {
-			i++
-		}
-	}
-
-	return allCommands
-}
-func contains(arr []string, element string) bool {
-	for _, v := range arr {
-		if strings.ToLower(v) == element {
-			return true
-		}
-	}
-	return false
-}
-
-func handshake(masterPort string, host string, slavePort string) net.Conn {
-
-	connection, err := net.Dial("tcp", host+":"+masterPort)
-
-	if err != nil {
-		fmt.Println("Failed to bind to port " + masterPort)
+func receiveRDB(reader *bufio.Reader) {
+	response, _ := reader.ReadString('\n')
+	if response[0] != '$' {
+		fmt.Printf("Invalid response\n")
 		os.Exit(1)
 	}
+	rdbSize, _ := strconv.Atoi(response[1 : len(response)-2])
+	buffer := make([]byte, rdbSize)
+	receivedSize, err := reader.Read(buffer)
+	if err != nil {
+		fmt.Printf("Invalid RDB received %v\n", err)
+		os.Exit(1)
+	}
+	if rdbSize != receivedSize {
+		fmt.Printf("Size mismatch - got: %d, want: %d\n", receivedSize, rdbSize)
+	}
 
-	message := arrayType([]string{bulkString("PING")}, 1)
-	connection.Write([]byte(message))
+}
+func configure() {
+	if len(config.replicaofHost) == 0 {
 
-	response := Receive(connection)
+		config.role = "master"
+		config.replid = randReplid()
 
-	if strings.Contains(response, "pong") {
+	} else {
 
-		message = arrayType([]string{bulkString("REPLCONF"), bulkString("listening-port"), bulkString(slavePort)}, 3)
-		connection.Write([]byte(message))
+		config.role = "slave"
+		replicaofArgs := strings.Split(config.replicaofHost, " ")
 
-		response = Receive(connection)
+		switch len(replicaofArgs) {
+		case 1:
+			config.replicaofPort = 6379
+		case 2:
+			config.replicaofPort, _ = strconv.Atoi(replicaofArgs[1])
+		default:
+			flag.Usage()
+			os.Exit(1)
+		}
+		config.replicaofHost = replicaofArgs[0]
 
-		if strings.Contains(response, "ok") {
+	}
+}
+func connect() {
+	listener, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", config.port))
+	if err != nil {
+		fmt.Printf("Failed to bind to port %d\n", config.port)
+		os.Exit(1)
+	}
+	fmt.Println("Listening on: ", listener.Addr().String())
 
-			message = arrayType([]string{bulkString("REPLCONF"), bulkString("capa"), bulkString("psync2")}, 3)
-			connection.Write([]byte(message))
+	store = make(map[string]string)
+	ttl = make(map[string]time.Time)
 
-			response = Receive(connection)
+	for id := 1; ; id++ {
+		conn, err := listener.Accept()
+		if err != nil {
+			fmt.Println("Error accepting connection: ", err.Error())
+			os.Exit(1)
+		}
+		go serveClient(id, conn)
+	}
+}
+func randReplid() string {
+	chars := []byte("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	result := make([]byte, 40)
+	for i := range result {
+		c := rand.Intn(len(chars))
+		result[i] = chars[c]
+	}
+	return string(result)
+}
+func serveClient(id int, conn net.Conn) {
+	defer conn.Close()
+	fmt.Printf("[#%d] Client connected: %v\n", id, conn.RemoteAddr().String())
 
-			if strings.Contains(response, "ok") {
+	for {
 
-				fmt.Println("[SLAVE] got ok as response from", connection.RemoteAddr())
-				fmt.Println("[SLAVE] got ok as response from local", connection.LocalAddr())
-				message = arrayType([]string{bulkString("PSYNC"), bulkString("?"), "$2\r\n-1\r\n"}, 3)
-				connection.Write([]byte(message))
+		scanner := bufio.NewScanner(conn)
+		cmd := []string{}
+		var arrSize, strSize int
+
+		for scanner.Scan() {
+
+			token := scanner.Text()
+			cmd, arrSize, strSize = parseCommands(token, arrSize, strSize, cmd)
+
+			if arrSize == 0 {
+				break
 			}
 		}
-	}
-	return connection
-}
-func Propagate(connMap map[string]net.Conn, message string) {
 
-	for _, connection := range connMap {
+		// TODO: handle scanner errors
 
-		if connection == nil {
-			fmt.Println("there's no mapped connection")
-			return
+		if len(cmd) == 0 {
+			break
 		}
-		connection.Write([]byte(message))
+
+		fmt.Printf("[#%d] Command = %v\n", id, cmd)
+		response, resynch := handleCommand(cmd)
+
+		_, err := conn.Write([]byte(response))
+
+		if err != nil {
+			fmt.Printf("[#%d] Error writing response: %v\n", id, err.Error())
+			break
+		}
+
+		if resynch {
+			sendRDB(conn)
+			replicas = append(replicas, conn)
+		}
 	}
+
+	fmt.Printf("[#%d] Client closing\n", id)
 }
+func sendRDB(conn net.Conn) {
 
-// func saveMapToFile(myMap map[string]string, fileName string) {
-// 	file, err := os.Create(fileName)
-// 	if err != nil {
-// 		fmt.Println("error in creating file", fileName)
-// 	}
-// 	defer file.Close()
+	emptyRDB := []byte("524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2")
+	buffer := make([]byte, hex.DecodedLen(len(emptyRDB)))
+	// TODO: check for errors
+	hex.Decode(buffer, emptyRDB)
+	conn.Write([]byte(fmt.Sprintf("$%d\r\n", len(buffer))))
+	conn.Write(buffer)
 
-// 	encoder := json.NewEncoder(file)
-// 	encoder.Encode(myMap)
-// }
-// func retrieveMapFromFile(fileName string) map[string]string {
-// 	myMap := make(map[string]string)
-// 	file, err := os.Open(fileName)
-// 	if err != nil {
-// 		fmt.Println("there's an error here")
-// 	}
-// 	fmt.Println("opened the file", fileName)
-// 	defer file.Close()
-
-// 	content, err := io.ReadAll(file)
-// 	if err != nil {
-// 		fmt.Println("Error reading file:", err)
-// 	}
-
-// 	// Step 3: Print the contents
-// 	fmt.Println(string(content))
-
-//		decoder := json.NewDecoder(file)
-//		decoder.Decode(&myMap)
-//		return myMap
-//	}
-func simpleString(s string) string {
-	return fmt.Sprintf("+%s\r\n", s)
 }
-func bulkString(s string) string {
-	if s == "-1" {
-		return fmt.Sprintf("$%s\r\n", s)
+func parseCommands(token string, arrSize int, strSize int, cmd []string) ([]string, int, int) {
+
+	switch token[0] {
+	case '*':
+		arrSize, _ = strconv.Atoi(token[1:])
+	case '$':
+		strSize, _ = strconv.Atoi(token[1:])
+	default:
+		if len(token) != strSize {
+			fmt.Printf("[from master] Wrong string size - got: %d, want: %d\n", len(token), strSize)
+			break
+		}
+		arrSize--
+		strSize = 0
+		cmd = append(cmd, token)
 	}
-	return fmt.Sprintf("$%d\r\n%s\r\n", len(s), s)
+	return cmd, arrSize, strSize
 }
-func arrayType(arr []string, length int) string {
-	message := ""
-	for _, s := range arr {
-		message += s
-	}
-	return fmt.Sprintf("*%d\r\n%s", length, message)
-}
-func RDBFile(content string) string {
-	binaryData, err := base64.StdEncoding.DecodeString(content)
-
-	if err != nil {
-		fmt.Println("Error on RDBFile fct")
-	}
-	message := string(binaryData)
-	return fmt.Sprintf("$%d\r\n%s", len(message), message)
-}
-
-// func connect2(port string, host string, role string) {
-
-// 	listener, err := net.Listen("tcp", host+":"+port)
-
-// 	if err != nil {
-// 		fmt.Println("Failed to bind to port " + port)
-// 		os.Exit(1)
-// 	}
-// 	fmt.Println("we're listening to", port)
-
-// 	defer listener.Close()
-
-// 	// for {
-// 	fmt.Println("I am another ", role)
-// 	fmt.Println("[SLAVE] my network addr is ", listener.Addr())
-
-// 	connection, err := listener.Accept()
-
-// 	if err != nil {
-// 		fmt.Println("Error accepting connection: ", err.Error())
-// 		// os.Exit(1)
-// 	}
-
-// 	fmt.Println("[SLAVE] listening to", connection.RemoteAddr())
-// 	handleConnection(connection, role)
-// 	// }
-// }
