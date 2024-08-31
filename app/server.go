@@ -60,6 +60,9 @@ func encodeBulkString(s string) string {
 	}
 	return fmt.Sprintf("$%d\r\n%s\r\n", len(s), s)
 }
+func encodeInteger(number int) string {
+	return fmt.Sprintf(":%d\r\n", number)
+}
 
 func encodeStringArray(arr []string) string {
 	result := fmt.Sprintf("*%d\r\n", len(arr))
@@ -128,6 +131,8 @@ func handleCommand(cmd []string, byteCount int) (response string, resynch bool) 
 		} else {
 			response = encodeBulkString("")
 		}
+	case "WAIT":
+		response = encodeInteger(0)
 	}
 	if isWrite {
 		propagate(cmd)
