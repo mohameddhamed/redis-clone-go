@@ -46,8 +46,9 @@ func main() {
 		reader := handshake(masterConn)
 
 		receiveRDB(reader)
+		totalProcessedBytes := 0
 
-		go handlePropagation(reader, masterConn)
+		go handlePropagation(reader, masterConn, totalProcessedBytes)
 	}
 
 	connect()
@@ -68,7 +69,7 @@ func encodeStringArray(arr []string) string {
 	return result
 }
 
-func handleCommand(cmd []string) (response string, resynch bool) {
+func handleCommand(cmd []string, byteCount int) (response string, resynch bool) {
 	isWrite := false
 	switch strings.ToUpper(cmd[0]) {
 	case "COMMAND":
@@ -76,7 +77,7 @@ func handleCommand(cmd []string) (response string, resynch bool) {
 	case "REPLCONF":
 		if len(cmd) >= 2 {
 			if strings.ToUpper(cmd[1]) == "GETACK" {
-				response = encodeStringArray([]string{"REPLCONF", "ACK", "0"})
+				response = encodeStringArray([]string{"REPLCONF", "ACK", strconv.Itoa(byteCount)})
 			} else {
 				// TODO: Implement proper replication
 				response = "+OK\r\n"
@@ -158,12 +159,15 @@ func removeReplica(replicas []net.Conn, i int) []net.Conn {
 	return replicas
 }
 
-func handlePropagation(reader *bufio.Reader, masterConn net.Conn) {
+func handlePropagation(reader *bufio.Reader, masterConn net.Conn, totalProcessedBytes int) {
 	for {
 		cmd := []string{}
 		var arrSize, strSize int
+		byteCount := 0
 		for {
 			token, err := reader.ReadString('\n')
+			byteCount += len(token)
+
 			if err != nil {
 				return
 			}
@@ -184,7 +188,8 @@ func handlePropagation(reader *bufio.Reader, masterConn net.Conn) {
 		}
 
 		fmt.Printf("[from master] Command = %q\n", cmd)
-		response, _ := handleCommand(cmd)
+		response, _ := handleCommand(cmd, totalProcessedBytes)
+		totalProcessedBytes += byteCount
 		fmt.Printf("response = %q\n", response)
 
 		if strings.ToUpper(cmd[0]) == "REPLCONF" {

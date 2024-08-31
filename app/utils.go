@@ -123,7 +123,7 @@ func serveClient(id int, conn net.Conn) {
 		}
 
 		fmt.Printf("[#%d] Command = %v\n", id, cmd)
-		response, resynch := handleCommand(cmd)
+		response, resynch := handleCommand(cmd, 0)
 
 		_, err := conn.Write([]byte(response))
 
