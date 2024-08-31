@@ -132,7 +132,7 @@ func handleCommand(cmd []string, byteCount int) (response string, resynch bool) 
 			response = encodeBulkString("")
 		}
 	case "WAIT":
-		response = encodeInteger(0)
+		response = encodeInteger(len(replicas))
 	}
 	if isWrite {
 		propagate(cmd)
