@@ -126,6 +126,7 @@ func serveClient(id int, conn net.Conn) {
 		response, resynch := handleCommand(cmd, 0)
 
 		_, err := conn.Write([]byte(response))
+		fmt.Println("wroter the following response", response)
 
 		if err != nil {
 			fmt.Printf("[#%d] Error writing response: %v\n", id, err.Error())
@@ -134,7 +135,7 @@ func serveClient(id int, conn net.Conn) {
 
 		if resynch {
 			sendRDB(conn)
-			replicas = append(replicas, conn)
+			replicas = append(replicas, replica{conn, 0})
 		}
 	}
 
@@ -167,4 +168,53 @@ func parseCommands(token string, arrSize int, strSize int, cmd []string) ([]stri
 		cmd = append(cmd, token)
 	}
 	return cmd, arrSize, strSize
+}
+
+func handleWait(count, timeout int) string {
+	getAckCmd := []byte(encodeStringArray([]string{"REPLCONF", "GETACK", "*"}))
+
+	acks := 0
+
+	for i := 0; i < len(replicas); i++ {
+
+		if replicas[i].offset > 0 {
+
+			bytesWritten, _ := replicas[i].conn.Write(getAckCmd)
+			replicas[i].offset += bytesWritten
+
+			go func(conn net.Conn) {
+
+				fmt.Println("waiting response from replica", conn.RemoteAddr().String())
+				buffer := make([]byte, 1024)
+
+				_, err := conn.Read(buffer)
+				if err == nil {
+					fmt.Println("got response from replica", conn.RemoteAddr().String())
+				} else {
+					fmt.Println("error from replica", conn.RemoteAddr().String(), " => ", err.Error())
+				}
+
+				ackReceived <- true
+
+			}(replicas[i].conn)
+		} else {
+			acks++
+		}
+	}
+
+	timer := time.After(time.Duration(timeout) * time.Millisecond)
+
+outer:
+	for acks < count {
+		select {
+		case <-ackReceived:
+			acks++
+			fmt.Println("acks =", acks)
+		case <-timer:
+			fmt.Println("timeout! acks =", acks)
+			break outer
+		}
+	}
+
+	return encodeInteger(acks)
 }

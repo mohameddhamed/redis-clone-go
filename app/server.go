@@ -8,8 +8,14 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
+
+type replica struct {
+	conn   net.Conn
+	offset int
+}
 
 type serverConfig struct {
 	port          int
@@ -20,12 +26,17 @@ type serverConfig struct {
 	replicaofPort int
 }
 
+var ackReceived = make(chan bool)
+var mu sync.Mutex
 var store map[string]string
 var ttl map[string]time.Time
 var config serverConfig
-var replicas []net.Conn
+var replicas []replica
+var numAcknowledgedReplicas int
 
 func main() {
+
+	numAcknowledgedReplicas = 0
 
 	flag.IntVar(&config.port, "port", 6379, "listen on specified port")
 	flag.StringVar(&config.replicaofHost, "replicaof", "", "start server in replica mode of given host and port")
@@ -81,6 +92,12 @@ func handleCommand(cmd []string, byteCount int) (response string, resynch bool) 
 		if len(cmd) >= 2 {
 			if strings.ToUpper(cmd[1]) == "GETACK" {
 				response = encodeStringArray([]string{"REPLCONF", "ACK", strconv.Itoa(byteCount)})
+
+			} else if config.role == "master" && strings.ToUpper(cmd[1]) == "ACK" {
+				// mu.Lock()
+				// numAcknowledgedReplicas++
+				// mu.Unlock()
+				ackReceived <- true
 			} else {
 				// TODO: Implement proper replication
 				response = "+OK\r\n"
@@ -132,7 +149,11 @@ func handleCommand(cmd []string, byteCount int) (response string, resynch bool) 
 			response = encodeBulkString("")
 		}
 	case "WAIT":
-		response = encodeInteger(len(replicas))
+		// response = encodeInteger(len(replicas))
+		numReplicas, _ := strconv.Atoi(cmd[1])
+		timeout, _ := strconv.Atoi(cmd[2])
+		response = handleWait(numReplicas, timeout)
+		// numAcknowledgedReplicas = 0
 	}
 	if isWrite {
 		propagate(cmd)
@@ -145,16 +166,18 @@ func propagate(cmd []string) {
 		return
 	}
 	for i := 0; i < len(replicas); i++ {
-		fmt.Printf("Replicating to: %s\n", replicas[i].RemoteAddr().String())
-		_, err := replicas[i].Write([]byte(encodeStringArray(cmd)))
+		fmt.Printf("Replicating to: %s\n", replicas[i].conn.RemoteAddr().String())
+		bytesWritten, err := replicas[i].conn.Write([]byte(encodeStringArray(cmd)))
 
 		if err != nil {
 			replicas = removeReplica(replicas, i)
 		}
+
+		replicas[i].offset += bytesWritten
 	}
 }
-func removeReplica(replicas []net.Conn, i int) []net.Conn {
-	fmt.Printf("Disconnected: %s\n", replicas[i].RemoteAddr().String())
+func removeReplica(replicas []replica, i int) []replica {
+	fmt.Printf("Disconnected: %s\n", replicas[i].conn.RemoteAddr().String())
 	if len(replicas) > 1 {
 		last := len(replicas) - 1
 		replicas[i] = replicas[last]
