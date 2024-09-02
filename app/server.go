@@ -8,7 +8,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -24,22 +23,30 @@ type serverConfig struct {
 	replOffset    int
 	replicaofHost string
 	replicaofPort int
+	dir           string
+	dbFileName    string
 }
 
 var ackReceived = make(chan bool)
-var mu sync.Mutex
+
+// var mu sync.Mutex
 var store map[string]string
 var ttl map[string]time.Time
 var config serverConfig
 var replicas []replica
-var numAcknowledgedReplicas int
+
+// var numAcknowledgedReplicas int
 
 func main() {
 
-	numAcknowledgedReplicas = 0
+	// numAcknowledgedReplicas = 0
 
 	flag.IntVar(&config.port, "port", 6379, "listen on specified port")
 	flag.StringVar(&config.replicaofHost, "replicaof", "", "start server in replica mode of given host and port")
+
+	flag.StringVar(&config.dir, "dir", "", "the path to the directory where the RDB file is stored")
+	flag.StringVar(&config.dbFileName, "dbfilename", "", "the name of the RDB file ")
+
 	flag.Parse()
 
 	configure()
@@ -154,6 +161,15 @@ func handleCommand(cmd []string, byteCount int) (response string, resynch bool) 
 		timeout, _ := strconv.Atoi(cmd[2])
 		response = handleWait(numReplicas, timeout)
 		// numAcknowledgedReplicas = 0
+	case "CONFIG":
+		if strings.ToLower(cmd[1]) == "get" {
+			switch strings.ToLower(cmd[2]) {
+			case "dir":
+				response = encodeStringArray([]string{"dir", config.dir})
+			case "dbfilename":
+				response = encodeStringArray([]string{"dbfilename", config.dbFileName})
+			}
+		}
 	}
 	if isWrite {
 		propagate(cmd)
