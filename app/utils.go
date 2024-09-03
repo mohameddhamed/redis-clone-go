@@ -218,3 +218,23 @@ outer:
 
 	return encodeInteger(acks)
 }
+func sliceIndex(data []byte, sep byte) int {
+	for i, b := range data {
+		if b == sep {
+			return i
+		}
+	}
+	return -1
+}
+func parseTable(bytes []byte) []byte {
+	start := sliceIndex(bytes, opCodeResizeDB)
+	end := sliceIndex(bytes, opCodeEOF)
+	return bytes[start+1 : end]
+}
+func handleKeys(path string) string {
+	c, _ := os.ReadFile(path)
+	fmt.Println("read file")
+	key := parseTable(c)
+	str := key[4 : 4+key[3]]
+	return string(str)
+}

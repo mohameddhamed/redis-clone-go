@@ -36,6 +36,17 @@ var config serverConfig
 var replicas []replica
 
 // var numAcknowledgedReplicas int
+const (
+	opCodeModuleAux    byte = 247 /* Module auxiliary data. */
+	opCodeIdle         byte = 248 /* LRU idle time. */
+	opCodeFreq         byte = 249 /* LFU frequency. */
+	opCodeAux          byte = 250 /* RDB aux field. */
+	opCodeResizeDB     byte = 251 /* Hash table resize hint. */
+	opCodeExpireTimeMs byte = 252 /* Expire time in milliseconds. */
+	opCodeExpireTime   byte = 253 /* Old expire time in seconds. */
+	opCodeSelectDB     byte = 254 /* DB number of the following keys. */
+	opCodeEOF          byte = 255
+)
 
 func main() {
 
@@ -161,6 +172,11 @@ func handleCommand(cmd []string, byteCount int) (response string, resynch bool) 
 		timeout, _ := strconv.Atoi(cmd[2])
 		response = handleWait(numReplicas, timeout)
 		// numAcknowledgedReplicas = 0
+	case "KEYS":
+		// response = handleKeys(cmd[1])
+		fileContent := handleKeys(config.dir + "/" + config.dbFileName)
+		response = fmt.Sprintf("*1\r\n$%d\r\n%s\r\n", len(fileContent), fileContent)
+
 	case "CONFIG":
 		if strings.ToLower(cmd[1]) == "get" {
 			switch strings.ToLower(cmd[2]) {
