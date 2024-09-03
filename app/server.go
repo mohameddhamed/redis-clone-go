@@ -164,7 +164,10 @@ func handleCommand(cmd []string, byteCount int) (response string, resynch bool) 
 			}
 
 		} else {
-			response = encodeBulkString("")
+			path := config.dir + "/" + config.dbFileName
+			fileContent := handleKeys(path, cmd[1])
+			response = encodeBulkString(fileContent)
+			// response = encodeBulkString("")
 		}
 	case "WAIT":
 		// response = encodeInteger(len(replicas))
@@ -174,7 +177,12 @@ func handleCommand(cmd []string, byteCount int) (response string, resynch bool) 
 		// numAcknowledgedReplicas = 0
 	case "KEYS":
 		// response = handleKeys(cmd[1])
-		fileContent := handleKeys(config.dir + "/" + config.dbFileName)
+		pattern := ""
+		if len(cmd) > 1 {
+			pattern = cmd[1]
+		}
+		path := config.dir + "/" + config.dbFileName
+		fileContent := handleKeys(path, pattern)
 		response = fmt.Sprintf("*1\r\n$%d\r\n%s\r\n", len(fileContent), fileContent)
 
 	case "CONFIG":

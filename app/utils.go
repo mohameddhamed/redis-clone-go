@@ -126,7 +126,6 @@ func serveClient(id int, conn net.Conn) {
 		response, resynch := handleCommand(cmd, 0)
 
 		_, err := conn.Write([]byte(response))
-		fmt.Println("wroter the following response", response)
 
 		if err != nil {
 			fmt.Printf("[#%d] Error writing response: %v\n", id, err.Error())
@@ -231,9 +230,15 @@ func parseTable(bytes []byte) []byte {
 	end := sliceIndex(bytes, opCodeEOF)
 	return bytes[start+1 : end]
 }
-func handleKeys(path string) string {
+func handleKeys(path string, pattern string) string {
 	content, _ := os.ReadFile(path)
 	key := parseTable(content)
-	str := key[4 : 4+key[3]]
+	fmt.Println("this is the key", string(key))
+	if pattern == "" {
+		str := key[4 : 4+key[3]]
+		return string(str)
+	}
+	str := key[4+key[3]+1:]
 	return string(str)
+
 }
