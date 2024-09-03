@@ -232,9 +232,8 @@ func parseTable(bytes []byte) []byte {
 	return bytes[start+1 : end]
 }
 func handleKeys(path string) string {
-	c, _ := os.ReadFile(path)
-	fmt.Println("read file")
-	key := parseTable(c)
+	content, _ := os.ReadFile(path)
+	key := parseTable(content)
 	str := key[4 : 4+key[3]]
 	return string(str)
 }
