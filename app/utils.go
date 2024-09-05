@@ -233,7 +233,8 @@ func parseTable(bytes []byte) []byte {
 func handleKeys(path string, pattern string) string {
 	content, _ := os.ReadFile(path)
 	key := parseTable(content)
-	fmt.Println("this is the key", string(key))
+	// fmt.Println("this is the key", key)
+	parse(key)
 	if pattern == "" {
 		str := key[4 : 4+key[3]]
 		return string(str)
@@ -241,4 +242,29 @@ func handleKeys(path string, pattern string) string {
 	str := key[4+key[3]+1:]
 	return string(str)
 
+}
+func parse(keys []byte) {
+	for len(keys) > 0 {
+		// Get the length of the key from the byte slice
+		keyLength := int(keys[3]) // Assuming the 4th byte stores the key length
+		key := keys[4 : 4+keyLength]
+
+		// Move to the value section after the key
+		valueStart := 4 + keyLength
+		if valueStart >= len(keys) {
+			fmt.Println("Incomplete data for value.")
+			break
+		}
+
+		// Assuming the value length is stored at valueStart
+		valueLength := int(keys[valueStart])
+		value := keys[valueStart+1 : valueStart+1+valueLength]
+
+		// Print the key and value
+		fmt.Println("Key:", string(key))
+		fmt.Println("Value:", string(value))
+
+		// Move to the next key-value pair by advancing the slice
+		keys = keys[valueStart+1+valueLength:]
+	}
 }
