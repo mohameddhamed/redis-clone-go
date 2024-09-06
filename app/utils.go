@@ -2,12 +2,16 @@ package main
 
 import (
 	"bufio"
+	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"math/rand"
 	"net"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -75,8 +79,8 @@ func connect() {
 	}
 	fmt.Println("Listening on: ", listener.Addr().String())
 
-	store = make(map[string]string)
-	ttl = make(map[string]time.Time)
+	// store = make(map[string]string)
+	// ttl = make(map[string]time.Time)
 
 	for id := 1; ; id++ {
 		conn, err := listener.Accept()
@@ -230,41 +234,282 @@ func parseTable(bytes []byte) []byte {
 	end := sliceIndex(bytes, opCodeEOF)
 	return bytes[start+1 : end]
 }
-func handleKeys(path string, pattern string) string {
-	content, _ := os.ReadFile(path)
-	key := parseTable(content)
-	// fmt.Println("this is the key", key)
-	parse(key)
-	if pattern == "" {
-		str := key[4 : 4+key[3]]
-		return string(str)
+
+//	func handleKeys(path string, pattern string) string {
+//		c, _ := os.Open(path)
+//		res, _ := ParseRDB(c)
+//		if len(res) == 0 {
+//			return ""
+//		}
+//		for i := 0; i < len(res); i += 2 {
+//			KeyValueStore[res[i]] = KeyVal{
+//				value:        res[i+1],
+//				expiryTime:   -1,
+//				insertedTime: time.Now(),
+//			}
+//		}
+//		return string(res[0])
+//	}
+func ParseRDB(file *os.File) ([]string, error) {
+	reader := bufio.NewReader(file)
+	result := []string{}
+	// Read header.
+	header := make([]byte, 9)
+	_, err := reader.Read(header)
+	if err != nil {
+		return result, err
 	}
-	str := key[4+key[3]+1:]
-	return string(str)
-
+	// Skip the junk after the header.
+	if _, err := reader.ReadBytes(opCodeResizeDB); err != nil {
+		return result, err
+	}
+	if _, err := reader.Read(make([]byte, 2)); err != nil {
+		return result, err
+	}
+	for {
+		opcode, err := reader.ReadByte()
+		fmt.Println(opcode)
+		if err != nil {
+			return result, err
+		}
+		switch opcode {
+		case opCodeSelectDB:
+			// Follwing byte(s) is the db number.
+			_, err := decodeLength(reader)
+			if err != nil {
+				return result, err
+			}
+		case opCodeAuxField:
+			// Length prefixed key and value strings follow.
+			kv := [][]byte{}
+			for i := 0; i < 2; i++ {
+				length, err := decodeLength(reader)
+				if err != nil {
+					return result, err
+				}
+				data := make([]byte, int(length))
+				if _, err = reader.Read(data); err != nil {
+					return result, err
+				}
+				kv = append(kv, data)
+			}
+		case opCodeResizeDB:
+			// Implement
+		case opCodeTypeString:
+			kv := [][]byte{}
+			for i := 0; i < 2; i++ {
+				length, err := decodeLength(reader)
+				if err != nil {
+					return result, err
+				}
+				data := make([]byte, int(length))
+				if _, err = reader.Read(data); err != nil {
+					return result, err
+				}
+				kv = append(kv, data)
+			}
+			result = append(result, string(kv[0]), string(kv[1]))
+		case opCodeEOF:
+			// Get the 8-byte checksum after this
+			checksum := make([]byte, 8)
+			_, err := reader.Read(checksum)
+			if err != nil {
+				return result, err
+			}
+			return result, nil
+		default:
+			// Handle any other tags.
+		}
+	}
 }
-func parse(keys []byte) {
-	for len(keys) > 0 {
-		// Get the length of the key from the byte slice
-		keyLength := int(keys[3]) // Assuming the 4th byte stores the key length
-		key := keys[4 : 4+keyLength]
+func decodeLength(r *bufio.Reader) (int, error) {
+	num, err := r.ReadByte()
+	if err != nil {
+		return 0, err
+	}
+	switch {
+	case num <= 63: // leading bits 00
+		// Remaining 6 bits are the length.
+		return int(num & 0b00111111), nil
+	case num <= 127: // leading bits 01
+		// Remaining 6 bits plus next byte are the length
+		nextNum, err := r.ReadByte()
+		if err != nil {
+			return 0, err
+		}
+		length := binary.BigEndian.Uint16([]byte{num & 0b00111111, nextNum})
+		return int(length), nil
+	case num <= 191: // leading bits 10
+		// Next 4 bytes are the length
+		bytes := make([]byte, 4)
+		_, err := r.Read(bytes)
+		if err != nil {
+			return 0, err
+		}
+		length := binary.BigEndian.Uint32(bytes)
+		return int(length), nil
+	case num <= 255: // leading bits 11
+		// Next 6 bits indicate the format of the encoded object.
+		// TODO: This will result in problems on the next read, possibly.
+		valueType := num & 0b00111111
+		return int(valueType), nil
+	default:
+		return 0, err
+	}
+}
+func readEncodedInt(reader *bufio.Reader) (int, error) {
+	mask := byte(0b11000000)
+	b0, err := reader.ReadByte()
+	if err != nil {
+		return 0, err
+	}
+	if b0&mask == 0b00000000 {
+		return int(b0), nil
+	} else if b0&mask == 0b01000000 {
+		b1, err := reader.ReadByte()
+		if err != nil {
+			return 0, err
+		}
+		return int(b1)<<6 | int(b0&mask), nil
+	} else if b0&mask == 0b10000000 {
+		b1, _ := reader.ReadByte()
+		b2, _ := reader.ReadByte()
+		b3, _ := reader.ReadByte()
+		b4, err := reader.ReadByte()
+		if err != nil {
+			return 0, err
+		}
+		// TODO: check endianness!
+		return int(b1)<<24 | int(b2)<<16 | int(b3)<<8 | int(b4), nil
+	} else if b0 >= 0b11000000 && b0 <= 0b11000010 { // Special format: Integers as String
+		var b1, b2, b3, b4 byte
+		b1, err = reader.ReadByte()
+		if b0 >= 0b11000001 {
+			b2, err = reader.ReadByte()
+		}
+		if b0 == 0b11000010 {
+			b3, _ = reader.ReadByte()
+			b4, err = reader.ReadByte()
+		}
+		if err != nil {
+			return 0, err
+		}
+		return int(b1) | int(b2)<<8 | int(b3)<<16 | int(b4)<<24, nil
+	} else {
+		return 0, errors.New("not implemented")
+	}
+}
 
-		// Move to the value section after the key
-		valueStart := 4 + keyLength
-		if valueStart >= len(keys) {
-			fmt.Println("Incomplete data for value.")
-			break
+func readEncodedString(reader *bufio.Reader) (string, error) {
+	size, err := readEncodedInt(reader)
+	if err != nil {
+		return "", err
+	}
+	data := make([]byte, size)
+	actual, err := reader.Read(data)
+	if err != nil {
+		return "", err
+	}
+	if int(size) != actual {
+		return "", errors.New("unexpected string length")
+	}
+	return string(data), nil
+}
+
+func readRDB(rdbPath string) error {
+	file, err := os.Open(rdbPath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	reader := bufio.NewReader(file)
+
+	header := make([]byte, 9)
+	reader.Read(header)
+	if slices.Compare(header[:5], []byte("REDIS")) != 0 {
+		return errors.New("not a RDB file")
+	}
+
+	version, _ := strconv.Atoi(string(header[5:]))
+	fmt.Printf("File version: %d\n", version)
+
+	for eof := false; !eof; {
+
+		startDataRead := false
+		opCode, err := reader.ReadByte()
+
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return err
 		}
 
-		// Assuming the value length is stored at valueStart
-		valueLength := int(keys[valueStart])
-		value := keys[valueStart+1 : valueStart+1+valueLength]
+		// TODO: handle errors properly
+		switch opCode {
+		case 0xFA: // Auxiliary fields
+			key, _ := readEncodedString(reader)
+			switch key {
+			case "redis-ver":
+				value, _ := readEncodedString(reader)
+				fmt.Printf("Aux: %s = %v\n", key, value)
+			case "redis-bits":
+				bits, _ := readEncodedInt(reader)
+				fmt.Printf("Aux: %s = %v\n", key, bits)
+			case "ctime":
+				ctime, _ := readEncodedInt(reader)
+				fmt.Printf("Aux: %s = %v\n", key, ctime)
+			case "used-mem":
+				usedmem, _ := readEncodedInt(reader)
+				fmt.Printf("Aux: %s = %v\n", key, usedmem)
+			case "aof-preamble":
+				size, _ := readEncodedInt(reader)
+				// preamble := make([]byte, size)
+				// reader.Read(preamble)
+				fmt.Printf("Aux: %s = %d\n", key, size)
+			default:
+				fmt.Printf("Unknown auxiliary field: %q\n", key)
+			}
 
-		// Print the key and value
-		fmt.Println("Key:", string(key))
-		fmt.Println("Value:", string(value))
+		case 0xFB: // Hash table sizes for the main keyspace and expires
+			keyspace, _ := readEncodedInt(reader)
+			expires, _ := readEncodedInt(reader)
+			fmt.Printf("Hash table sizes: keyspace = %d, expires = %d\n", keyspace, expires)
+			startDataRead = true
 
-		// Move to the next key-value pair by advancing the slice
-		keys = keys[valueStart+1+valueLength:]
+		case 0xFE: // Database Selector
+			db, _ := readEncodedInt(reader)
+			fmt.Printf("Database Selector = %d\n", db)
+
+		case 0xFF: // End of the RDB file
+			eof = true
+		default:
+			fmt.Printf("Unknown op code: %d\n", opCode)
+		}
+
+		if startDataRead {
+			for {
+				valueType, err := reader.ReadByte()
+				if err != nil {
+					return err
+				}
+
+				// TODO: handle expiry
+
+				if valueType > 14 {
+					startDataRead = false
+					reader.UnreadByte()
+					break
+				}
+
+				key, _ := readEncodedString(reader)
+				value, _ := readEncodedString(reader)
+				fmt.Printf("Reading key/value: %q => %q\n", key, value)
+				store[key] = value
+			}
+		}
 	}
+
+	return nil
 }

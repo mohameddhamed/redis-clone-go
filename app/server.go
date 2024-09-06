@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -27,7 +28,7 @@ type serverConfig struct {
 	dbFileName    string
 }
 
-var ackReceived = make(chan bool)
+var ackReceived chan bool
 
 // var mu sync.Mutex
 var store map[string]string
@@ -37,15 +38,11 @@ var replicas []replica
 
 // var numAcknowledgedReplicas int
 const (
-	opCodeModuleAux    byte = 247 /* Module auxiliary data. */
-	opCodeIdle         byte = 248 /* LRU idle time. */
-	opCodeFreq         byte = 249 /* LFU frequency. */
-	opCodeAux          byte = 250 /* RDB aux field. */
-	opCodeResizeDB     byte = 251 /* Hash table resize hint. */
-	opCodeExpireTimeMs byte = 252 /* Expire time in milliseconds. */
-	opCodeExpireTime   byte = 253 /* Old expire time in seconds. */
-	opCodeSelectDB     byte = 254 /* DB number of the following keys. */
-	opCodeEOF          byte = 255
+	opCodeAuxField   byte = 0xFA // key, value follow
+	opCodeSelectDB   byte = 0xFE // following byte is db number
+	opCodeResizeDB   byte = 0xFB // follwing are 2 length-encoded ints
+	opCodeTypeString byte = 0x00 // following byte(s) are length encoding
+	opCodeEOF        byte = 0xFF // following 8 bytes are CRC64 checksum
 )
 
 func main() {
@@ -59,6 +56,10 @@ func main() {
 	flag.StringVar(&config.dbFileName, "dbfilename", "", "the name of the RDB file ")
 
 	flag.Parse()
+
+	store = make(map[string]string)
+	ttl = make(map[string]time.Time)
+	ackReceived = make(chan bool)
 
 	configure()
 
@@ -78,6 +79,14 @@ func main() {
 		totalProcessedBytes := 0
 
 		go handlePropagation(reader, masterConn, totalProcessedBytes)
+	}
+
+	if len(config.dir) > 0 && len(config.dbFileName) > 0 {
+		rdbPath := filepath.Join(config.dir, config.dbFileName)
+		err := readRDB(rdbPath)
+		if err != nil {
+			fmt.Printf("Failed to load '%s': %v\n", rdbPath, err)
+		}
 	}
 
 	connect()
@@ -141,18 +150,15 @@ func handleCommand(cmd []string, byteCount int) (response string, resynch bool) 
 		// TODO: check length
 		key, value := cmd[1], cmd[2]
 		store[key] = value
-
 		if len(cmd) == 5 && strings.ToUpper(cmd[3]) == "PX" {
 			expiration, _ := strconv.Atoi(cmd[4])
 			ttl[key] = time.Now().Add(time.Millisecond * time.Duration(expiration))
 		}
 		response = "+OK\r\n"
-
 	case "GET":
 		// TODO: check length
 		key := cmd[1]
 		value, ok := store[key]
-
 		if ok {
 			expiration, exists := ttl[key]
 			if !exists || expiration.After(time.Now()) {
@@ -162,12 +168,8 @@ func handleCommand(cmd []string, byteCount int) (response string, resynch bool) 
 				delete(store, key)
 				response = encodeBulkString("")
 			}
-
 		} else {
-			path := config.dir + "/" + config.dbFileName
-			fileContent := handleKeys(path, cmd[1])
-			response = encodeBulkString(fileContent)
-			// response = encodeBulkString("")
+			response = encodeBulkString("")
 		}
 	case "WAIT":
 		// response = encodeInteger(len(replicas))
@@ -176,14 +178,11 @@ func handleCommand(cmd []string, byteCount int) (response string, resynch bool) 
 		response = handleWait(numReplicas, timeout)
 		// numAcknowledgedReplicas = 0
 	case "KEYS":
-		// response = handleKeys(cmd[1])
-		pattern := ""
-		if len(cmd) > 1 {
-			pattern = cmd[1]
+		keys := make([]string, 0, len(store))
+		for key := range store {
+			keys = append(keys, key)
 		}
-		path := config.dir + "/" + config.dbFileName
-		fileContent := handleKeys(path, pattern)
-		response = fmt.Sprintf("*1\r\n$%d\r\n%s\r\n", len(fileContent), fileContent)
+		response = encodeStringArray(keys)
 
 	case "CONFIG":
 		if strings.ToLower(cmd[1]) == "get" {
