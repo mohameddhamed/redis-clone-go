@@ -37,13 +37,13 @@ var config serverConfig
 var replicas []replica
 
 // var numAcknowledgedReplicas int
-const (
-	opCodeAuxField   byte = 0xFA // key, value follow
-	opCodeSelectDB   byte = 0xFE // following byte is db number
-	opCodeResizeDB   byte = 0xFB // follwing are 2 length-encoded ints
-	opCodeTypeString byte = 0x00 // following byte(s) are length encoding
-	opCodeEOF        byte = 0xFF // following 8 bytes are CRC64 checksum
-)
+// const (
+// 	opCodeAuxField   byte = 0xFA // key, value follow
+// 	opCodeSelectDB   byte = 0xFE // following byte is db number
+// 	opCodeResizeDB   byte = 0xFB // follwing are 2 length-encoded ints
+// 	opCodeTypeString byte = 0x00 // following byte(s) are length encoding
+// 	opCodeEOF        byte = 0xFF // following 8 bytes are CRC64 checksum
+// )
 
 func main() {
 

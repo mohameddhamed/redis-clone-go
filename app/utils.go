@@ -221,19 +221,20 @@ outer:
 
 	return encodeInteger(acks)
 }
-func sliceIndex(data []byte, sep byte) int {
-	for i, b := range data {
-		if b == sep {
-			return i
-		}
-	}
-	return -1
-}
-func parseTable(bytes []byte) []byte {
-	start := sliceIndex(bytes, opCodeResizeDB)
-	end := sliceIndex(bytes, opCodeEOF)
-	return bytes[start+1 : end]
-}
+
+// func sliceIndex(data []byte, sep byte) int {
+// 	for i, b := range data {
+// 		if b == sep {
+// 			return i
+// 		}
+// 	}
+// 	return -1
+// }
+// func parseTable(bytes []byte) []byte {
+// 	start := sliceIndex(bytes, opCodeResizeDB)
+// 	end := sliceIndex(bytes, opCodeEOF)
+// 	return bytes[start+1 : end]
+// }
 
 //	func handleKeys(path string, pattern string) string {
 //		c, _ := os.Open(path)
@@ -250,113 +251,115 @@ func parseTable(bytes []byte) []byte {
 //		}
 //		return string(res[0])
 //	}
-func ParseRDB(file *os.File) ([]string, error) {
-	reader := bufio.NewReader(file)
-	result := []string{}
-	// Read header.
-	header := make([]byte, 9)
-	_, err := reader.Read(header)
-	if err != nil {
-		return result, err
-	}
-	// Skip the junk after the header.
-	if _, err := reader.ReadBytes(opCodeResizeDB); err != nil {
-		return result, err
-	}
-	if _, err := reader.Read(make([]byte, 2)); err != nil {
-		return result, err
-	}
-	for {
-		opcode, err := reader.ReadByte()
-		fmt.Println(opcode)
-		if err != nil {
-			return result, err
-		}
-		switch opcode {
-		case opCodeSelectDB:
-			// Follwing byte(s) is the db number.
-			_, err := decodeLength(reader)
-			if err != nil {
-				return result, err
-			}
-		case opCodeAuxField:
-			// Length prefixed key and value strings follow.
-			kv := [][]byte{}
-			for i := 0; i < 2; i++ {
-				length, err := decodeLength(reader)
-				if err != nil {
-					return result, err
-				}
-				data := make([]byte, int(length))
-				if _, err = reader.Read(data); err != nil {
-					return result, err
-				}
-				kv = append(kv, data)
-			}
-		case opCodeResizeDB:
-			// Implement
-		case opCodeTypeString:
-			kv := [][]byte{}
-			for i := 0; i < 2; i++ {
-				length, err := decodeLength(reader)
-				if err != nil {
-					return result, err
-				}
-				data := make([]byte, int(length))
-				if _, err = reader.Read(data); err != nil {
-					return result, err
-				}
-				kv = append(kv, data)
-			}
-			result = append(result, string(kv[0]), string(kv[1]))
-		case opCodeEOF:
-			// Get the 8-byte checksum after this
-			checksum := make([]byte, 8)
-			_, err := reader.Read(checksum)
-			if err != nil {
-				return result, err
-			}
-			return result, nil
-		default:
-			// Handle any other tags.
-		}
-	}
-}
-func decodeLength(r *bufio.Reader) (int, error) {
-	num, err := r.ReadByte()
-	if err != nil {
-		return 0, err
-	}
-	switch {
-	case num <= 63: // leading bits 00
-		// Remaining 6 bits are the length.
-		return int(num & 0b00111111), nil
-	case num <= 127: // leading bits 01
-		// Remaining 6 bits plus next byte are the length
-		nextNum, err := r.ReadByte()
-		if err != nil {
-			return 0, err
-		}
-		length := binary.BigEndian.Uint16([]byte{num & 0b00111111, nextNum})
-		return int(length), nil
-	case num <= 191: // leading bits 10
-		// Next 4 bytes are the length
-		bytes := make([]byte, 4)
-		_, err := r.Read(bytes)
-		if err != nil {
-			return 0, err
-		}
-		length := binary.BigEndian.Uint32(bytes)
-		return int(length), nil
-	case num <= 255: // leading bits 11
-		// Next 6 bits indicate the format of the encoded object.
-		// TODO: This will result in problems on the next read, possibly.
-		valueType := num & 0b00111111
-		return int(valueType), nil
-	default:
-		return 0, err
-	}
-}
+//
+//	func ParseRDB(file *os.File) ([]string, error) {
+//		reader := bufio.NewReader(file)
+//		result := []string{}
+//		// Read header.
+//		header := make([]byte, 9)
+//		_, err := reader.Read(header)
+//		if err != nil {
+//			return result, err
+//		}
+//		// Skip the junk after the header.
+//		if _, err := reader.ReadBytes(opCodeResizeDB); err != nil {
+//			return result, err
+//		}
+//		if _, err := reader.Read(make([]byte, 2)); err != nil {
+//			return result, err
+//		}
+//		for {
+//			opcode, err := reader.ReadByte()
+//			fmt.Println(opcode)
+//			if err != nil {
+//				return result, err
+//			}
+//			switch opcode {
+//			case opCodeSelectDB:
+//				// Follwing byte(s) is the db number.
+//				_, err := decodeLength(reader)
+//				if err != nil {
+//					return result, err
+//				}
+//			case opCodeAuxField:
+//				// Length prefixed key and value strings follow.
+//				kv := [][]byte{}
+//				for i := 0; i < 2; i++ {
+//					length, err := decodeLength(reader)
+//					if err != nil {
+//						return result, err
+//					}
+//					data := make([]byte, int(length))
+//					if _, err = reader.Read(data); err != nil {
+//						return result, err
+//					}
+//					kv = append(kv, data)
+//				}
+//			case opCodeResizeDB:
+//				// Implement
+//			case opCodeTypeString:
+//				kv := [][]byte{}
+//				for i := 0; i < 2; i++ {
+//					length, err := decodeLength(reader)
+//					if err != nil {
+//						return result, err
+//					}
+//					data := make([]byte, int(length))
+//					if _, err = reader.Read(data); err != nil {
+//						return result, err
+//					}
+//					kv = append(kv, data)
+//				}
+//				result = append(result, string(kv[0]), string(kv[1]))
+//			case opCodeEOF:
+//				// Get the 8-byte checksum after this
+//				checksum := make([]byte, 8)
+//				_, err := reader.Read(checksum)
+//				if err != nil {
+//					return result, err
+//				}
+//				return result, nil
+//			default:
+//				// Handle any other tags.
+//			}
+//		}
+//	}
+//
+//	func decodeLength(r *bufio.Reader) (int, error) {
+//		num, err := r.ReadByte()
+//		if err != nil {
+//			return 0, err
+//		}
+//		switch {
+//		case num <= 63: // leading bits 00
+//			// Remaining 6 bits are the length.
+//			return int(num & 0b00111111), nil
+//		case num <= 127: // leading bits 01
+//			// Remaining 6 bits plus next byte are the length
+//			nextNum, err := r.ReadByte()
+//			if err != nil {
+//				return 0, err
+//			}
+//			length := binary.BigEndian.Uint16([]byte{num & 0b00111111, nextNum})
+//			return int(length), nil
+//		case num <= 191: // leading bits 10
+//			// Next 4 bytes are the length
+//			bytes := make([]byte, 4)
+//			_, err := r.Read(bytes)
+//			if err != nil {
+//				return 0, err
+//			}
+//			length := binary.BigEndian.Uint32(bytes)
+//			return int(length), nil
+//		case num <= 255: // leading bits 11
+//			// Next 6 bits indicate the format of the encoded object.
+//			// TODO: This will result in problems on the next read, possibly.
+//			valueType := num & 0b00111111
+//			return int(valueType), nil
+//		default:
+//			return 0, err
+//		}
+//	}
 func readEncodedInt(reader *bufio.Reader) (int, error) {
 	mask := byte(0b11000000)
 	b0, err := reader.ReadByte()
@@ -496,6 +499,23 @@ func readRDB(rdbPath string) error {
 				}
 
 				// TODO: handle expiry
+				var expiration time.Time
+				if valueType == 0xFD {
+					bytes := make([]byte, 4)
+					reader.Read(bytes)
+					expiration = time.Unix(int64(bytes[0])|int64(bytes[1])<<8|int64(bytes[2])<<16|int64(bytes[3])<<24, 0)
+					valueType, err = reader.ReadByte()
+				} else if valueType == 0xFC {
+					bytes := make([]byte, 8)
+					reader.Read(bytes)
+					expiration = time.UnixMilli(int64(bytes[0]) | int64(bytes[1])<<8 | int64(bytes[2])<<16 | int64(bytes[3])<<24 |
+						int64(bytes[4])<<32 | int64(bytes[5])<<40 | int64(bytes[6])<<48 | int64(bytes[7])<<56)
+					valueType, err = reader.ReadByte()
+				}
+
+				if err != nil {
+					return err
+				}
 
 				if valueType > 14 {
 					startDataRead = false
@@ -505,11 +525,60 @@ func readRDB(rdbPath string) error {
 
 				key, _ := readEncodedString(reader)
 				value, _ := readEncodedString(reader)
-				fmt.Printf("Reading key/value: %q => %q\n", key, value)
-				store[key] = value
+				fmt.Printf("Reading key/value: %q => %q Expiration: (%v)\n", key, value, expiration)
+
+				now := time.Now()
+
+				if expiration.IsZero() || expiration.After(now) {
+					if expiration.After(now) {
+						ttl[key] = expiration
+					}
+					store[key] = value
+				}
 			}
 		}
 	}
 
 	return nil
+}
+func readEncodedLong(reader *bufio.Reader) (uint64, error) {
+	var value uint64
+	err := binary.Read(reader, binary.LittleEndian, &value)
+	if err != nil {
+		return 0, err
+	}
+	return value, nil
+}
+func readUint32LittleEndian(reader *bufio.Reader) (uint32, error) {
+	var value uint32
+	err := binary.Read(reader, binary.LittleEndian, &value)
+	if err != nil {
+		return 0, err
+	}
+	return value, nil
+	// bytes := make([]byte, 4)
+	// _, err := reader.Read(bytes)
+	// if err != nil {
+	// 	return 0, err
+	// }
+
+	// // Little-endian means we start from the least significant byte
+	// return uint32(bytes[0]) | uint32(bytes[1])<<8 | uint32(bytes[2])<<16 | uint32(bytes[3])<<24, nil
+}
+
+func readBytes(reader io.Reader, numBytes uint64) ([]byte, error) {
+	buf := make([]byte, numBytes)
+	n, err := io.ReadFull(reader, buf)
+	if err != nil {
+		return nil, err
+	}
+	return buf[:n], nil
+}
+func readByte(reader io.Reader) (byte, error) {
+	buf := make([]byte, 1)
+	_, err := io.ReadFull(reader, buf)
+	if err != nil {
+		return 0, err
+	}
+	return buf[0], nil
 }
