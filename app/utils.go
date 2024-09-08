@@ -53,7 +53,8 @@ func connect() {
 			fmt.Println("Error accepting connection: ", err.Error())
 			os.Exit(1)
 		}
-		go serveClient(id, conn)
+		multi := -1
+		go serveClient(id, conn, &multi)
 	}
 }
 func randReplid() string {
@@ -65,7 +66,7 @@ func randReplid() string {
 	}
 	return string(result)
 }
-func serveClient(id int, conn net.Conn) {
+func serveClient(id int, conn net.Conn, multi *int) {
 	defer conn.Close()
 	fmt.Printf("[#%d] Client connected: %v\n", id, conn.RemoteAddr().String())
 
@@ -92,7 +93,7 @@ func serveClient(id int, conn net.Conn) {
 		}
 
 		fmt.Printf("[#%d] Command = %v\n", id, cmd)
-		response, resynch := handleCommand(cmd, 0)
+		response, resynch := handleCommand(cmd, 0, multi)
 
 		_, err := conn.Write([]byte(response))
 
@@ -158,6 +159,12 @@ outer:
 
 	return encodeInteger(acks)
 }
-func enQueue(cmd []string) {
+func enQueue(cmd []string, multi *int) string {
+	response := "+QUEUED\r\n"
 
+	if strings.ToUpper(cmd[0]) == "EXEC" {
+		response = encodeStringArray([]string{})
+		*multi = -1
+	}
+	return response
 }

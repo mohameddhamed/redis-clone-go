@@ -76,7 +76,8 @@ func handlePropagation(reader *bufio.Reader, masterConn net.Conn, totalProcessed
 		}
 
 		fmt.Printf("[from master] Command = %q\n", cmd)
-		response, _ := handleCommand(cmd, totalProcessedBytes)
+		multi := -1
+		response, _ := handleCommand(cmd, totalProcessedBytes, &multi)
 		totalProcessedBytes += byteCount
 		fmt.Printf("response = %q\n", response)
 
