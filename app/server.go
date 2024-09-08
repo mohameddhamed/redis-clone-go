@@ -128,6 +128,8 @@ func handleCommand(cmd []string, byteCount int) (response string, resynch bool) 
 		}
 	case "MULTI":
 		response = "+OK\r\n"
+	case "EXEC":
+		response = encodeError("EXEC without MULTI")
 	case "SET":
 		isWrite = true
 		// TODO: check length
