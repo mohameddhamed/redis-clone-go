@@ -34,6 +34,10 @@ func encodeInteger(number int) string {
 	return fmt.Sprintf(":%d\r\n", number)
 }
 
+func encodeError(message string) string {
+	return fmt.Sprintf("-ERR %s\r\n", message)
+}
+
 func encodeStringArray(arr []string) string {
 	result := fmt.Sprintf("*%d\r\n", len(arr))
 	for _, s := range arr {

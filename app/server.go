@@ -157,7 +157,14 @@ func handleCommand(cmd []string, byteCount int) (response string, resynch bool) 
 		key := cmd[1]
 		value, ok := store[key]
 		if ok {
-			numValue, _ := strconv.Atoi(value)
+			numValue, err := strconv.Atoi(value)
+
+			// if non numerical value
+			if err != nil {
+				response = encodeError("value is not an integer or out of range")
+				break
+			}
+
 			numValue++
 			store[key] = strconv.Itoa(numValue)
 
