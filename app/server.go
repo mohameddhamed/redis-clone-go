@@ -34,6 +34,7 @@ var store map[string]string
 var ttl map[string]time.Time
 var config serverConfig
 var replicas []replica
+var multi int
 
 // var numAcknowledgedReplicas int
 // const (
@@ -47,6 +48,7 @@ var replicas []replica
 func main() {
 
 	// numAcknowledgedReplicas = 0
+	multi = -1
 
 	flag.IntVar(&config.port, "port", 6379, "listen on specified port")
 	flag.StringVar(&config.replicaofHost, "replicaof", "", "start server in replica mode of given host and port")
@@ -93,6 +95,7 @@ func main() {
 
 func handleCommand(cmd []string, byteCount int) (response string, resynch bool) {
 	isWrite := false
+
 	switch strings.ToUpper(cmd[0]) {
 	case "COMMAND":
 		response = "+OK\r\n"
@@ -127,9 +130,16 @@ func handleCommand(cmd []string, byteCount int) (response string, resynch bool) 
 				config.role, config.replid, config.replOffset))
 		}
 	case "MULTI":
+		multi = 0
 		response = "+OK\r\n"
 	case "EXEC":
-		response = encodeError("EXEC without MULTI")
+		if multi < 0 {
+			response = encodeError("EXEC without MULTI")
+		} else {
+			response = encodeStringArray([]string{})
+			multi = -1
+		}
+
 	case "SET":
 		isWrite = true
 		// TODO: check length
@@ -202,6 +212,9 @@ func handleCommand(cmd []string, byteCount int) (response string, resynch bool) 
 	}
 	if isWrite {
 		propagate(cmd)
+	}
+	if multi >= 0 {
+		enQueue(cmd)
 	}
 	return
 }

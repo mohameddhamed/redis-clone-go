@@ -158,3 +158,6 @@ outer:
 
 	return encodeInteger(acks)
 }
+func enQueue(cmd []string) {
+
+}
