@@ -152,6 +152,19 @@ func handleCommand(cmd []string, byteCount int) (response string, resynch bool) 
 		} else {
 			response = encodeBulkString("")
 		}
+	case "INCR":
+		// TODO: check length
+		key := cmd[1]
+		value, ok := store[key]
+		if ok {
+			numValue, _ := strconv.Atoi(value)
+			numValue++
+			store[key] = strconv.Itoa(numValue)
+
+			response = encodeInteger(numValue)
+		} else {
+			response = encodeBulkString("")
+		}
 	case "WAIT":
 		// response = encodeInteger(len(replicas))
 		numReplicas, _ := strconv.Atoi(cmd[1])
