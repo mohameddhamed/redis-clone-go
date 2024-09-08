@@ -126,6 +126,8 @@ func handleCommand(cmd []string, byteCount int) (response string, resynch bool) 
 			response = encodeBulkString(fmt.Sprintf("role:%s\r\nmaster_replid:%s\r\nmaster_repl_offset:%d",
 				config.role, config.replid, config.replOffset))
 		}
+	case "MULTI":
+		response = "+OK\r\n"
 	case "SET":
 		isWrite = true
 		// TODO: check length
