@@ -163,7 +163,8 @@ func handleCommand(cmd []string, byteCount int) (response string, resynch bool) 
 
 			response = encodeInteger(numValue)
 		} else {
-			response = encodeBulkString("")
+			store[key] = "1"
+			response = encodeInteger(1)
 		}
 	case "WAIT":
 		// response = encodeInteger(len(replicas))
