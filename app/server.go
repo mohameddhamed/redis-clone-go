@@ -25,6 +25,7 @@ type serverConfig struct {
 	replicaofPort int
 	dir           string
 	dbFileName    string
+	queuedCmds    [][]string
 }
 
 var ackReceived chan bool

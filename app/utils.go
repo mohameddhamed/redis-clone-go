@@ -161,10 +161,22 @@ outer:
 }
 func enQueue(cmd []string, multi *int) string {
 	response := "+QUEUED\r\n"
+	var responses []string
 
 	if strings.ToUpper(cmd[0]) == "EXEC" {
-		response = encodeStringArray([]string{})
+		execMulti := -1
+		for _, command := range config.queuedCmds {
+			response, _ := handleCommand(command, 0, &execMulti)
+			responses = append(responses, response)
+		}
+
+		flattenedResponses := strings.Join(responses, "")
 		*multi = -1
+		execResponse := fmt.Sprintf("*%d\r\n%s", len(responses), flattenedResponses)
+
+		return execResponse
+
 	}
+	config.queuedCmds = append(config.queuedCmds, cmd)
 	return response
 }
