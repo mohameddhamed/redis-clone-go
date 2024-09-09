@@ -163,7 +163,13 @@ func enQueue(cmd []string, multi *int) string {
 	response := "+QUEUED\r\n"
 	var responses []string
 
-	if strings.ToUpper(cmd[0]) == "EXEC" {
+	if strings.ToUpper(cmd[0]) == "DISCARD" {
+
+		*multi = -1
+		config.queuedCmds = [][]string{}
+		return "+OK\r\n"
+
+	} else if strings.ToUpper(cmd[0]) == "EXEC" {
 		execMulti := -1
 		for _, command := range config.queuedCmds {
 			response, _ := handleCommand(command, 0, &execMulti)

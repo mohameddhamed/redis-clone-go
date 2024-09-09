@@ -142,6 +142,10 @@ func handleCommand(cmd []string, byteCount int, multi *int) (response string, re
 		if *multi < 0 {
 			response = encodeError("EXEC without MULTI")
 		}
+	case "DISCARD":
+		if *multi < 0 {
+			response = encodeError("DISCARD without MULTI")
+		}
 	case "SET":
 		isWrite = true
 		// TODO: check length
