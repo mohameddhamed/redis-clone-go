@@ -15,6 +15,10 @@ type replica struct {
 	conn   net.Conn
 	offset int
 }
+type Client struct {
+	conn  net.Conn
+	multi int
+}
 
 type serverConfig struct {
 	port          int
