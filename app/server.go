@@ -16,8 +16,8 @@ type replica struct {
 	offset int
 }
 type Client struct {
-	conn  net.Conn
-	multi int
+	connection net.Conn
+	multi      int
 }
 
 type serverConfig struct {
